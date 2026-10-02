@@ -120,89 +120,2847 @@
                 document.getElementById("userInput").focus();
             }, 500);
         }
-     function openStudy() {
-    document.body.innerHTML = `
-        <div class="study-page">
-            <button onclick="location.reload()">← Back</button>
+        function openStudy() {
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="location.reload()">← Back</button>
 
-            <h1>📚 Your Study</h1>
-            <p>What are you studying today?</p>
+                    <div class="study-heading">
+                        <h1>📚 Your Study</h1>
+                        <p>What are you studying today?</p>
+                    </div>
 
-            <div class="study-options">
-                <div class="study-option">
-                    <span>📖</span>
-                    <h2>My Courses</h2>
-                    <p>View and organise your courses.</p>
-                <div class="study-option" onclick="openCourses()">
+                    <div class="study-options">
+                        <div class="study-option clickable" onclick="openToday()">
+                            <span class="study-option-icon">📌</span>
+                            <h2>Today</h2>
+                            <p>Your study day at a glance — what to focus on now.</p>
+                        </div>
 
-                <div class="study-option">
-                    <span>📝</span>
-                    <h2>Topics & Revision</h2>
-                    <p>Review topics and keep track of what you've covered.</p>
+                        <div class="study-option clickable" onclick="openCourses()">
+                            <span class="study-option-icon">📖</span>
+                            <h2>My Courses</h2>
+                            <p>View and organise your courses.</p>
+                        </div>
+
+                        <div class="study-option">
+                            <span class="study-option-icon">📝</span>
+                            <h2>Topics &amp; Revision</h2>
+                            <p>Review topics and keep track of what you've covered.</p>
+                        </div>
+
+                        <div class="study-option clickable" onclick="openAssessments()">
+                            <span class="study-option-icon">📅</span>
+                            <h2>Upcoming Assessments</h2>
+                            <p>Keep track of tests, assignments and exams.</p>
+                        </div>
+
+                        <div class="study-option clickable" onclick="openSessions()">
+                            <span class="study-option-icon">⏱️</span>
+                            <h2>Study Sessions</h2>
+                            <p>Plan focused sessions for your studies.</p>
+                        </div>
+
+                        <div class="study-option clickable" onclick="openProgress()">
+                            <span class="study-option-icon">📊</span>
+                            <h2>My Progress</h2>
+                            <p>See how you're progressing with your studies.</p>
+                        </div>
+
+                        <div class="study-option clickable" onclick="openPlanner()">
+                            <span class="study-option-icon">🗓️</span>
+                            <h2>Study Planner</h2>
+                            <p>Turn an upcoming assessment into a study plan.</p>
+                        </div>
+
+                        <div class="study-option clickable" onclick="openTimetable()">
+                            <span class="study-option-icon">📅</span>
+                            <h2>Timetable</h2>
+                            <p>Your weekly classes, Monday to Sunday.</p>
+                        </div>
+                    </div>
                 </div>
-
-                <div class="study-option">
-                    <span>📅</span>
-                    <h2>Upcoming Assessments</h2>
-                    <p>Keep track of tests, assignments and exams.</p>
-                </div>
-
-                <div class="study-option">
-                    <span>⏱️</span>
-                    <h2>Study Sessions</h2>
-                    <p>Plan focused sessions for your studies.</p>
-                </div>
-
-                <div class="study-option">
-                    <span>📊</span>
-                    <h2>My Progress</h2>
-                    <p>See how you're progressing with your studies.</p>
-                </div>
-            </div>
-        </div>
-    `;
-}
+            `;
+        }
     
-function openCourses() {
-    document.body.innerHTML = `
-        <div class="study-page">
-            <button onclick="openStudy()">← Back</button>
+        const COURSES_KEY = "skolar.courses";
+        const TOPICS_KEY = "skolar.topics";
+        const ASSESSMENTS_KEY = "skolar.assessments";
+        const SESSIONS_KEY = "skolar.sessions";
 
-            <h1>📖 My Courses</h1>
-            <p>Your courses, all in one place.</p>
+        const SESSION_STATUSES = ["Planned", "Completed", "Skipped"];
 
-            <div class="course-list">
-                <div class="course-card">
-                    <h2>No courses yet</h2>
-                    <p>Add your first course to start organising your studies.</p>
-                    <button type="button" onclick="window.addCourse()">＋ Add Course</button>
+        const SESSION_DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
+
+        const PROGRESS_SOON_DAYS = 7;
+        const ATTENTION_LIMIT = 8;
+        const TIMETABLE_KEY = "skolar.timetable";
+
+        const TIMETABLE_DAYS = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+        ];
+
+        const TOPIC_STATUSES = [
+            "Not Started",
+            "In Progress",
+            "Completed",
+            "Needs Revision"
+        ];
+
+        const ASSESSMENT_TYPES = [
+            "Exam",
+            "Test",
+            "Quiz",
+            "Assignment",
+            "Presentation",
+            "Other"
+        ];
+
+        function makeId(prefix) {
+            return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+        }
+
+        function loadCourses() {
+            try {
+                const raw = localStorage.getItem(COURSES_KEY);
+
+                if (!raw) {
+                    return [];
+                }
+
+                const parsed = JSON.parse(raw);
+
+                if (!Array.isArray(parsed)) {
+                    return [];
+                }
+
+                const courses = parsed.filter(course => course && typeof course === "object");
+
+                let addedIds = false;
+
+                for (const course of courses) {
+                    if (typeof course.id !== "string" || !course.id) {
+                        course.id = makeId("course");
+                        addedIds = true;
+                    }
+                }
+
+                if (addedIds) {
+                    saveCourses(courses);
+                }
+
+                return courses;
+            } catch (error) {
+                console.error(error);
+
+                return [];
+            }
+        }
+
+        function saveCourses(courses) {
+            localStorage.setItem(COURSES_KEY, JSON.stringify(courses));
+        }
+
+        function loadTopics() {
+            try {
+                const raw = localStorage.getItem(TOPICS_KEY);
+
+                if (!raw) {
+                    return {};
+                }
+
+                const topics = JSON.parse(raw);
+
+                return topics && typeof topics === "object" ? topics : {};
+            } catch (error) {
+                console.error(error);
+
+                return {};
+            }
+        }
+
+        function loadTopicsFor(courseId) {
+            const allTopics = loadTopics();
+
+            return Array.isArray(allTopics[courseId]) ? allTopics[courseId] : [];
+        }
+
+        function saveTopicsFor(courseId, topics) {
+            const allTopics = loadTopics();
+
+            allTopics[courseId] = topics;
+
+            localStorage.setItem(TOPICS_KEY, JSON.stringify(allTopics));
+        }
+
+        function completedTopicCount(topics) {
+            return topics.filter(topic => topic.status === "Completed").length;
+        }
+
+        function statusClass(status) {
+            switch (status) {
+                case "In Progress":
+                    return "in-progress";
+                case "Completed":
+                    return "completed";
+                case "Needs Revision":
+                    return "needs-revision";
+                default:
+                    return "not-started";
+            }
+        }
+
+        function escapeHTML(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function courseCardHTML(course) {
+            const topics = loadTopicsFor(course.id);
+            const completed = completedTopicCount(topics);
+            const total = topics.length;
+            const percent = total ? Math.round((completed / total) * 100) : 0;
+
+            return `
+                <div class="course-card clickable" onclick="openTopics('${escapeHTML(course.id)}')">
+                    <h2>${escapeHTML(course.name)}</h2>
+                    <p>${course.code ? escapeHTML(course.code) : "Course code not added"}</p>
+                    <div class="course-progress">
+                        <div class="progress-label">
+                            <span>Progress</span>
+                            <span>${total ? completed + " of " + total + " topics completed" : "No topics yet"}</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                    <p class="course-topics-hint">📝 Topics &amp; Revision →</p>
                 </div>
-            </div>
-        </div>
-    `;
-}
+            `;
+        }
 
-function addCourse() {
-    aler("Add Course clicked!")
-    const courseName = prompt("Enter your course name:");
+        function openCourses() {
+            const courses = loadCourses();
 
-    if (!courseName || !courseName.trim()) {
-        return;
-    }
+            const courseListHTML = courses.length
+                ? courses.map(courseCardHTML).join("")
+                : `
+                    <div class="course-card empty-state">
+                        <h2>No courses yet</h2>
+                        <p>Add your first course to start organising your studies.</p>
+                    </div>
+                `;
 
-    const courseCode = prompt("Enter the course code (optional):");
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
 
-    const courseList = document.querySelector(".course-list");
+                    <div class="study-heading">
+                        <h1>📖 My Courses</h1>
+                        <p>Your courses, all in one place.</p>
+                    </div>
 
-    courseList.innerHTML = `
-        <div class="course-card">
-            <h2>${courseName.trim()}</h2>
-            <p>${courseCode ? courseCode.trim() : "Course code not added"}</p>
-        </div>
-    `;
-}
-window.addcourse = addcourse;
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="addCourse()">＋ Add Course</button>
+                    </div>
+
+                    <div class="course-list">
+                        ${courseListHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        function addCourse() {
+            const courseName = prompt("Enter your course name:");
+
+            if (!courseName || !courseName.trim()) {
+                return;
+            }
+
+            const courseCode = prompt("Enter the course code (optional):");
+
+            const courses = loadCourses();
+
+            courses.push({
+                name: courseName.trim(),
+                code: courseCode ? courseCode.trim() : ""
+            });
+
+            saveCourses(courses);
+
+            openCourses();
+        }
+
+        function topicCardHTML(courseId, topic) {
+            const status = TOPIC_STATUSES.includes(topic.status) ? topic.status : "Not Started";
+
+            const optionsHTML = TOPIC_STATUSES.map(option => `
+                <option value="${option}" ${option === status ? "selected" : ""}>${option}</option>
+            `).join("");
+
+            return `
+                <div class="topic-card ${statusClass(status)}">
+                    <div class="topic-main">
+                        <h2>${escapeHTML(topic.name)}</h2>
+                    </div>
+                    <select
+                        class="topic-status-select ${statusClass(status)}"
+                        onchange="updateTopicStatus('${escapeHTML(courseId)}', '${escapeHTML(topic.id)}', this.value)"
+                    >
+                        ${optionsHTML}
+                    </select>
+                </div>
+            `;
+        }
+
+        function openTopics(courseId) {
+            const course = loadCourses().find(c => c.id === courseId);
+
+            if (!course) {
+                openCourses();
+                return;
+            }
+
+            const topics = loadTopicsFor(courseId);
+            const completed = completedTopicCount(topics);
+            const percent = topics.length ? Math.round((completed / topics.length) * 100) : 0;
+
+            const topicsHTML = topics.length
+                ? topics.map(topic => topicCardHTML(courseId, topic)).join("")
+                : `
+                    <div class="topic-card empty-state">
+                        <h2>No topics yet</h2>
+                        <p>Add your first topic to start tracking your revision.</p>
+                    </div>
+                `;
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openCourses()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📝 Topics &amp; Revision</h1>
+                        <p>${escapeHTML(course.name)}${course.code ? " · " + escapeHTML(course.code) : ""}</p>
+                    </div>
+
+                    <div class="course-progress topics-progress">
+                        <div class="progress-label">
+                            <span>Progress</span>
+                            <span>${topics.length ? completed + " of " + topics.length + " topics completed" : "No topics yet"}</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="addTopic('${escapeHTML(courseId)}')">＋ Add Topic</button>
+                    </div>
+
+                    <div class="topic-list">
+                        ${topicsHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        function addTopic(courseId) {
+            const topicName = prompt("Enter the topic name:");
+
+            if (!topicName || !topicName.trim()) {
+                return;
+            }
+
+            const topics = loadTopicsFor(courseId);
+
+            topics.push({
+                id: makeId("topic"),
+                name: topicName.trim(),
+                status: "Not Started"
+            });
+
+            saveTopicsFor(courseId, topics);
+
+            openTopics(courseId);
+        }
+
+        function updateTopicStatus(courseId, topicId, status) {
+            if (!TOPIC_STATUSES.includes(status)) {
+                return;
+            }
+
+            const topics = loadTopicsFor(courseId);
+            const topic = topics.find(t => t.id === topicId);
+
+            if (!topic) {
+                return;
+            }
+
+            topic.status = status;
+
+            saveTopicsFor(courseId, topics);
+
+            openTopics(courseId);
+        }
+
+        function loadAssessments() {
+            try {
+                const raw = localStorage.getItem(ASSESSMENTS_KEY);
+
+                if (!raw) {
+                    return [];
+                }
+
+                const assessments = JSON.parse(raw);
+
+                if (!Array.isArray(assessments)) {
+                    return [];
+                }
+
+                return assessments.filter(item => item && typeof item === "object");
+            } catch (error) {
+                console.error(error);
+
+                return [];
+            }
+        }
+
+        function saveAssessments(assessments) {
+            localStorage.setItem(ASSESSMENTS_KEY, JSON.stringify(assessments));
+        }
+
+        function getCourseById(courseId) {
+            return loadCourses().find(course => course.id === courseId);
+        }
+
+        function assessmentTimestamp(assessment) {
+            const [year, month, day] = (assessment.date || "").split("-").map(Number);
+            const [hours, minutes] = (assessment.time || "00:00").split(":").map(Number);
+
+            if (!year || !month || !day) {
+                return NaN;
+            }
+
+            return new Date(year, month - 1, day, hours || 0, minutes || 0, 0, 0).getTime();
+        }
+
+        function formatAssessmentDate(assessment) {
+            const timestamp = assessmentTimestamp(assessment);
+
+            if (isNaN(timestamp)) {
+                return "No date set";
+            }
+
+            return new Date(timestamp).toLocaleDateString("en-GB", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                year: "numeric"
+            });
+        }
+
+        function formatAssessmentTime(assessment) {
+            const timestamp = assessmentTimestamp(assessment);
+
+            if (isNaN(timestamp) || !assessment.time) {
+                return "Time not set";
+            }
+
+            return new Date(timestamp).toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+        }
+
+        function countdownFor(assessment) {
+            const timestamp = assessmentTimestamp(assessment);
+
+            if (isNaN(timestamp)) {
+                return { label: "No date set", detail: "", overdue: false };
+            }
+
+            const diff = timestamp - Date.now();
+            const overdue = diff < 0;
+            const remaining = Math.abs(diff);
+
+            const days = Math.floor(remaining / 86400000);
+            const hours = Math.floor((remaining % 86400000) / 3600000);
+            const minutes = Math.floor((remaining % 3600000) / 60000);
+
+            if (overdue) {
+                if (days >= 1) {
+                    return {
+                        label: "Overdue",
+                        detail: days + (days === 1 ? " day ago" : " days ago"),
+                        overdue: true
+                    };
+                }
+
+                if (hours >= 1) {
+                    return {
+                        label: "Overdue",
+                        detail: hours + (hours === 1 ? " hour ago" : " hours ago"),
+                        overdue: true
+                    };
+                }
+
+                return {
+                    label: "Overdue",
+                    detail: Math.max(minutes, 1) + (Math.max(minutes, 1) === 1 ? " min ago" : " mins ago"),
+                    overdue: true
+                };
+            }
+
+            if (days >= 1) {
+                return {
+                    label: days + (days === 1 ? " day left" : " days left"),
+                    detail: "",
+                    overdue: false
+                };
+            }
+
+            if (hours >= 1) {
+                return {
+                    label: hours + (hours === 1 ? " hour left" : " hours left"),
+                    detail: "",
+                    overdue: false
+                };
+            }
+
+            if (minutes >= 1) {
+                return {
+                    label: minutes + (minutes === 1 ? " min left" : " mins left"),
+                    detail: "",
+                    overdue: false
+                };
+            }
+
+            return { label: "Due now", detail: "", overdue: false };
+        }
+
+        function sortAssessments(assessments) {
+            const now = Date.now();
+
+            return [...assessments].sort((a, b) => {
+                const timeA = assessmentTimestamp(a);
+                const timeB = assessmentTimestamp(b);
+                const validA = !isNaN(timeA);
+                const validB = !isNaN(timeB);
+
+                if (!validA || !validB) {
+                    return validA ? -1 : validB ? 1 : 0;
+                }
+
+                const upcomingA = timeA >= now;
+                const upcomingB = timeB >= now;
+
+                if (upcomingA && !upcomingB) {
+                    return -1;
+                }
+
+                if (!upcomingA && upcomingB) {
+                    return 1;
+                }
+
+                // upcoming: nearest first, overdue: most recent first
+                return upcomingA ? timeA - timeB : timeB - timeA;
+            });
+        }
+
+        function countdownPillHTML(countdown) {
+            return `
+                <span class="countdown-pill ${countdown.overdue ? "overdue" : ""}">
+                    ${escapeHTML(countdown.label)}${countdown.detail ? " · " + escapeHTML(countdown.detail) : ""}
+                </span>
+            `;
+        }
+
+        function assessmentCardHTML(assessment) {
+            const course = getCourseById(assessment.courseId);
+            const countdown = countdownFor(assessment);
+            const courseName = course ? course.name : "Unknown course";
+
+            return `
+                <div class="assessment-card clickable ${countdown.overdue ? "overdue" : ""}" onclick="openAssessment('${escapeHTML(assessment.id)}')">
+                    <div class="assessment-main">
+                        <span class="assessment-name">${escapeHTML(assessment.name)}</span>
+                        <span class="assessment-meta">${escapeHTML(courseName)}${course && course.code ? " · " + escapeHTML(course.code) : ""}</span>
+                    </div>
+                    <div class="assessment-side">
+                        <span class="type-badge">${escapeHTML(assessment.type)}</span>
+                        <span class="assessment-when">${escapeHTML(formatAssessmentDate(assessment))}${assessment.time ? " · " + escapeHTML(formatAssessmentTime(assessment)) : ""}</span>
+                        ${countdownPillHTML(countdown)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function assessmentSectionHTML(title, assessments) {
+            if (!assessments.length) {
+                return "";
+            }
+
+            return `
+                <h2 class="list-heading">${title}</h2>
+                <div class="assessment-list">
+                    ${assessments.map(assessmentCardHTML).join("")}
+                </div>
+            `;
+        }
+
+        function courseFilterHTML(courses, activeId, allLabel, openFunction) {
+            const options = [{ id: "all", name: allLabel }].concat(courses);
+
+            return `
+                <div class="filter-row">
+                    ${options.map(option => `
+                        <button
+                            type="button"
+                            class="filter-pill ${option.id === activeId ? "active" : ""}"
+                            onclick="${openFunction}('${escapeHTML(option.id)}')"
+                        >${escapeHTML(option.name)}</button>
+                    `).join("")}
+                </div>
+            `;
+        }
+
+        function emptyAssessmentsHTML() {
+            if (!loadCourses().length) {
+                return `
+                    <div class="assessment-card empty-state">
+                        <h2>No courses yet</h2>
+                        <p>Add a course in My Courses first — every assessment is linked to one of your courses.</p>
+                        <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="assessment-card empty-state">
+                    <h2>No assessments yet</h2>
+                    <p>Add your first exam, test, quiz, assignment or presentation to keep track of what is coming up.</p>
+                </div>
+            `;
+        }
+
+        function openAssessments(courseFilter) {
+            const courses = loadCourses();
+            const activeFilter = courseFilter || "all";
+
+            const assessments = sortAssessments(
+                activeFilter === "all"
+                    ? loadAssessments()
+                    : loadAssessments().filter(item => item.courseId === activeFilter)
+            );
+
+            const upcoming = assessments.filter(item => !countdownFor(item).overdue);
+            const overdue = assessments.filter(item => countdownFor(item).overdue);
+
+            const listHTML = assessments.length
+                ? assessmentSectionHTML("Upcoming", upcoming) + assessmentSectionHTML("Overdue", overdue)
+                : emptyAssessmentsHTML();
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📅 Upcoming Assessments</h1>
+                        <p>Everything coming up, closest first.</p>
+                    </div>
+
+                    ${courseFilterHTML(courses, activeFilter, "All assessments", "openAssessments")}
+
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="openAssessmentForm()">＋ Add Assessment</button>
+                    </div>
+
+                    ${listHTML}
+                </div>
+            `;
+        }
+
+        function openAssessmentForm(assessmentId) {
+            const courses = loadCourses();
+
+            if (!courses.length) {
+                openAssessments();
+                return;
+            }
+
+            const existing = assessmentId
+                ? loadAssessments().find(item => item.id === assessmentId)
+                : null;
+
+            const backTarget = existing
+                ? `openAssessment('${escapeHTML(existing.id)}')`
+                : "openAssessments()";
+
+            const courseOptionsHTML = courses.map(course => `
+                <option value="${escapeHTML(course.id)}" ${existing && existing.courseId === course.id ? "selected" : ""}>
+                    ${escapeHTML(course.name)}${course.code ? " (" + escapeHTML(course.code) + ")" : ""}
+                </option>
+            `).join("");
+
+            const typeOptionsHTML = ASSESSMENT_TYPES.map(type => `
+                <option value="${type}" ${existing && existing.type === type ? "selected" : ""}>${type}</option>
+            `).join("");
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="${backTarget}">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${existing ? "✏️ Edit Assessment" : "📅 New Assessment"}</h1>
+                        <p>${existing ? "Update the details below." : "Add an exam, test, quiz, assignment or presentation."}</p>
+                    </div>
+
+                    <div class="assessment-form">
+                        <label class="form-field">
+                            <span class="form-label">Assessment name</span>
+                            <input
+                                type="text"
+                                id="assessment-name"
+                                value="${existing ? escapeHTML(existing.name) : ""}"
+                                placeholder="e.g. Midterm Paper"
+                            >
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Course</span>
+                            <select id="assessment-course">${courseOptionsHTML}</select>
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Type</span>
+                            <select id="assessment-type">${typeOptionsHTML}</select>
+                        </label>
+
+                        <div class="form-row">
+                            <label class="form-field">
+                                <span class="form-label">Date</span>
+                                <input type="date" id="assessment-date" value="${existing ? escapeHTML(existing.date) : ""}">
+                            </label>
+
+                            <label class="form-field">
+                                <span class="form-label">Time</span>
+                                <input type="time" id="assessment-time" value="${existing ? escapeHTML(existing.time || "") : ""}">
+                            </label>
+                        </div>
+
+                        <label class="form-field">
+                            <span class="form-label">Notes (optional)</span>
+                            <textarea id="assessment-notes" rows="3" placeholder="Chapters to revise, room number, anything useful">${existing ? escapeHTML(existing.notes || "") : ""}</textarea>
+                        </label>
+
+                        <p id="assessment-error" class="form-error"></p>
+
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="add-course-button"
+                                onclick="saveAssessment('${existing ? escapeHTML(existing.id) : ""}')"
+                            >${existing ? "Save Changes" : "Add Assessment"}</button>
+
+                            <button type="button" class="back-button inline" onclick="${backTarget}">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function saveAssessment(assessmentId) {
+            const nameInput = document.getElementById("assessment-name");
+            const courseInput = document.getElementById("assessment-course");
+            const typeInput = document.getElementById("assessment-type");
+            const dateInput = document.getElementById("assessment-date");
+            const timeInput = document.getElementById("assessment-time");
+            const notesInput = document.getElementById("assessment-notes");
+            const errorBox = document.getElementById("assessment-error");
+
+            const showError = message => {
+                if (errorBox) {
+                    errorBox.className = "form-error visible";
+                    errorBox.innerHTML = message;
+                }
+            };
+
+            const name = nameInput.value.trim();
+            const course = getCourseById(courseInput.value);
+            const type = typeInput.value;
+            const date = dateInput.value;
+            const time = timeInput.value;
+            const notes = notesInput.value.trim();
+
+            if (!name) {
+                showError("Please enter an assessment name.");
+                return;
+            }
+
+            if (!course) {
+                showError("Please choose one of your saved courses.");
+                return;
+            }
+
+            if (!ASSESSMENT_TYPES.includes(type)) {
+                showError("Please choose an assessment type.");
+                return;
+            }
+
+            if (!date) {
+                showError("Please choose a date.");
+                return;
+            }
+
+            if (!time) {
+                showError("Please choose a time.");
+                return;
+            }
+
+            const assessments = loadAssessments();
+            const existing = assessmentId
+                ? assessments.find(item => item.id === assessmentId)
+                : null;
+
+            if (assessmentId && !existing) {
+                openAssessments();
+                return;
+            }
+
+            if (existing) {
+                existing.name = name;
+                existing.courseId = course.id;
+                existing.type = type;
+                existing.date = date;
+                existing.time = time;
+                existing.notes = notes;
+            } else {
+                assessments.push({
+                    id: makeId("assessment"),
+                    courseId: course.id,
+                    name: name,
+                    type: type,
+                    date: date,
+                    time: time,
+                    notes: notes
+                });
+            }
+
+            saveAssessments(assessments);
+
+            openAssessments();
+        }
+
+        function openAssessment(assessmentId) {
+            const assessment = loadAssessments().find(item => item.id === assessmentId);
+
+            if (!assessment) {
+                openAssessments();
+                return;
+            }
+
+            const course = getCourseById(assessment.courseId);
+            const courseName = course ? course.name : "Unknown course";
+            const countdown = countdownFor(assessment);
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openAssessments('${escapeHTML(assessment.courseId)}')">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${escapeHTML(assessment.name)}</h1>
+                        <p>${escapeHTML(courseName)}</p>
+                    </div>
+
+                    <div class="detail-card">
+                        <div class="detail-row">
+                            <span class="detail-label">Course</span>
+                            <span class="detail-value">${escapeHTML(courseName)}${course && course.code ? " (" + escapeHTML(course.code) + ")" : ""}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Type</span>
+                            <span class="detail-value"><span class="type-badge">${escapeHTML(assessment.type)}</span></span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Date</span>
+                            <span class="detail-value">${escapeHTML(formatAssessmentDate(assessment))}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Time</span>
+                            <span class="detail-value">${escapeHTML(formatAssessmentTime(assessment))}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Countdown</span>
+                            <span class="detail-value">${countdownPillHTML(countdown)}</span>
+                        </div>
+
+                        <div class="detail-row notes">
+                            <span class="detail-label">Notes</span>
+                            <span class="detail-value">${assessment.notes ? escapeHTML(assessment.notes) : "No notes added."}</span>
+                        </div>
+                    </div>
+
+                    <div class="detail-actions">
+                        <button type="button" class="add-course-button" onclick="openAssessmentForm('${escapeHTML(assessment.id)}')">Edit</button>
+                        <button type="button" class="add-course-button" onclick="openPlanner('${escapeHTML(assessment.id)}')">Plan study sessions</button>
+                        <button type="button" class="delete-button" onclick="deleteAssessment('${escapeHTML(assessment.id)}')">Delete</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function deleteAssessment(assessmentId) {
+            const assessments = loadAssessments();
+            const index = assessments.findIndex(item => item.id === assessmentId);
+
+            if (index === -1) {
+                openAssessments();
+                return;
+            }
+
+            if (!confirm(`Delete "${assessments[index].name}"? This cannot be undone.`)) {
+                return;
+            }
+
+            const courseId = assessments[index].courseId;
+
+            assessments.splice(index, 1);
+
+            saveAssessments(assessments);
+
+            openAssessments(courseId);
+        }
+
+        function loadSessions() {
+            try {
+                const raw = localStorage.getItem(SESSIONS_KEY);
+
+                if (!raw) {
+                    return [];
+                }
+
+                const sessions = JSON.parse(raw);
+
+                if (!Array.isArray(sessions)) {
+                    return [];
+                }
+
+                return sessions.filter(item => item && typeof item === "object");
+            } catch (error) {
+                console.error(error);
+
+                return [];
+            }
+        }
+
+        function saveSessions(sessions) {
+            localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+        }
+
+        function sessionTimestamp(session) {
+            const [year, month, day] = (session.date || "").split("-").map(Number);
+            const [hours, minutes] = (session.startTime || "00:00").split(":").map(Number);
+
+            if (!year || !month || !day) {
+                return NaN;
+            }
+
+            return new Date(year, month - 1, day, hours || 0, minutes || 0, 0, 0).getTime();
+        }
+
+        function sessionDurationMinutes(session) {
+            const minutes = Number(session.duration);
+
+            return isFinite(minutes) && minutes > 0 ? minutes : 0;
+        }
+
+        function formatDuration(minutes) {
+            if (!minutes) {
+                return "0 min";
+            }
+
+            const hours = Math.floor(minutes / 60);
+            const rest = minutes % 60;
+
+            if (!hours) {
+                return rest + " min";
+            }
+
+            if (!rest) {
+                return hours + (hours === 1 ? " hour" : " hours");
+            }
+
+            return hours + "h " + rest + "m";
+        }
+
+        function formatSessionDate(session) {
+            const timestamp = sessionTimestamp(session);
+
+            if (isNaN(timestamp)) {
+                return "No date set";
+            }
+
+            return new Date(timestamp).toLocaleDateString("en-GB", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                year: "numeric"
+            });
+        }
+
+        function formatSessionTimeRange(session) {
+            const timestamp = sessionTimestamp(session);
+
+            if (isNaN(timestamp)) {
+                return "No time set";
+            }
+
+            const start = new Date(timestamp).toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+
+            const minutes = sessionDurationMinutes(session);
+
+            if (!minutes) {
+                return start;
+            }
+
+            const end = new Date(timestamp + minutes * 60000).toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+
+            return start + " – " + end;
+        }
+
+        function sessionStatusClass(status) {
+            switch (status) {
+                case "Completed":
+                    return "completed";
+                case "Skipped":
+                    return "skipped";
+                default:
+                    return "planned";
+            }
+        }
+
+        function sessionIsUpcoming(session, now) {
+            if (session.status !== "Planned") {
+                return false;
+            }
+
+            const timestamp = sessionTimestamp(session);
+
+            return !isNaN(timestamp) && timestamp >= (now === undefined ? Date.now() : now);
+        }
+
+        function sortSessions(sessions) {
+            const now = Date.now();
+
+            return [...sessions].sort((a, b) => {
+                const timeA = sessionTimestamp(a);
+                const timeB = sessionTimestamp(b);
+                const validA = !isNaN(timeA);
+                const validB = !isNaN(timeB);
+
+                if (!validA || !validB) {
+                    return validA ? -1 : validB ? 1 : 0;
+                }
+
+                const upcomingA = sessionIsUpcoming(a, now);
+                const upcomingB = sessionIsUpcoming(b, now);
+
+                if (upcomingA && !upcomingB) {
+                    return -1;
+                }
+
+                if (!upcomingA && upcomingB) {
+                    return 1;
+                }
+
+                // upcoming: nearest first, past: most recent first
+                return upcomingA ? timeA - timeB : timeB - timeA;
+            });
+        }
+
+        function sessionSummary(sessions) {
+            return {
+                planned: sessions.filter(item => item.status === "Planned").length,
+                completed: sessions.filter(item => item.status === "Completed").length,
+                skipped: sessions.filter(item => item.status === "Skipped").length,
+                totalMinutes: sessions.reduce(
+                    (sum, item) => sum + sessionDurationMinutes(item),
+                    0
+                )
+            };
+        }
+
+        function sessionSummaryHTML(summary) {
+            return `
+                <div class="summary-row">
+                    <div class="summary-tile">
+                        <span class="summary-value">${summary.planned}</span>
+                        <span class="summary-label">Planned</span>
+                    </div>
+
+                    <div class="summary-tile">
+                        <span class="summary-value">${summary.completed}</span>
+                        <span class="summary-label">Completed</span>
+                    </div>
+
+                    <div class="summary-tile">
+                        <span class="summary-value">${escapeHTML(formatDuration(summary.totalMinutes))}</span>
+                        <span class="summary-label">Total study time</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function sessionTopicOptionsHTML(courseId, selectedTopicId) {
+            const options = ['<option value="">No topic</option>'];
+
+            loadTopicsFor(courseId).forEach(topic => {
+                options.push(`
+                    <option value="${escapeHTML(topic.id)}" ${topic.id === selectedTopicId ? "selected" : ""}>
+                        ${escapeHTML(topic.name)}
+                    </option>
+                `);
+            });
+
+            return options.join("");
+        }
+
+        function updateSessionTopicOptions() {
+            const courseSelect = document.getElementById("session-course");
+            const topicSelect = document.getElementById("session-topic");
+
+            if (!courseSelect || !topicSelect) {
+                return;
+            }
+
+            topicSelect.innerHTML = sessionTopicOptionsHTML(courseSelect.value, "");
+        }
+
+        function sessionTopicName(session) {
+            if (!session.topicId) {
+                return "No topic selected";
+            }
+
+            const topic = loadTopicsFor(session.courseId).find(item => item.id === session.topicId);
+
+            return topic ? topic.name : "No topic selected";
+        }
+
+        function sessionCardHTML(session) {
+            const course = getCourseById(session.courseId);
+            const courseName = course ? course.name : "Unknown course";
+
+            return `
+                <div class="session-card clickable" onclick="openSession('${escapeHTML(session.id)}')">
+                    <div class="session-main">
+                        <span class="session-course">${escapeHTML(courseName)}</span>
+                        <span class="session-topic">${escapeHTML(sessionTopicName(session))}</span>
+                    </div>
+
+                    <div class="session-side">
+                        <span class="session-status ${sessionStatusClass(session.status)}">${escapeHTML(session.status)}</span>
+                        <span class="session-when">${escapeHTML(formatSessionDate(session))} · ${escapeHTML(formatSessionTimeRange(session))}</span>
+                        <span class="session-duration">${escapeHTML(formatDuration(sessionDurationMinutes(session)))}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function sessionSectionHTML(title, sessions) {
+            if (!sessions.length) {
+                return "";
+            }
+
+            return `
+                <h2 class="list-heading">${title}</h2>
+                <div class="session-list">
+                    ${sessions.map(sessionCardHTML).join("")}
+                </div>
+            `;
+        }
+
+        function emptySessionsHTML() {
+            if (!loadCourses().length) {
+                return `
+                    <div class="session-card empty-state">
+                        <h2>No courses yet</h2>
+                        <p>Add a course in My Courses first — every study session is linked to one of your courses.</p>
+                        <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="session-card empty-state">
+                    <h2>No study sessions yet</h2>
+                    <p>Plan your first focused session to start tracking your study time.</p>
+                </div>
+            `;
+        }
+
+        function openSessions(courseFilter) {
+            const courses = loadCourses();
+            const activeFilter = courseFilter || "all";
+
+            const allSessions = loadSessions();
+            const sessions = sortSessions(
+                activeFilter === "all"
+                    ? allSessions
+                    : allSessions.filter(item => item.courseId === activeFilter)
+            );
+
+            const upcoming = sessions.filter(item => sessionIsUpcoming(item));
+            const past = sessions.filter(item => !sessionIsUpcoming(item));
+
+            const listHTML = sessions.length
+                ? sessionSectionHTML("Upcoming", upcoming) + sessionSectionHTML("Past", past)
+                : emptySessionsHTML();
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>⏱️ Study Sessions</h1>
+                        <p>Plan focused study time and keep track of what you finish.</p>
+                    </div>
+
+                    ${sessionSummaryHTML(sessionSummary(sessions))}
+
+                    ${courseFilterHTML(courses, activeFilter, "All sessions", "openSessions")}
+
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="openSessionForm()">＋ Add Session</button>
+                    </div>
+
+                    ${listHTML}
+                </div>
+            `;
+        }
+
+        function openSessionForm(sessionId) {
+            const courses = loadCourses();
+
+            if (!courses.length) {
+                openSessions();
+                return;
+            }
+
+            const existing = sessionId
+                ? loadSessions().find(item => item.id === sessionId)
+                : null;
+
+            const backTarget = existing
+                ? `openSession('${escapeHTML(existing.id)}')`
+                : "openSessions()";
+
+            const courseId = existing ? existing.courseId : courses[0].id;
+
+            const courseOptionsHTML = courses.map(course => `
+                <option value="${escapeHTML(course.id)}" ${course.id === courseId ? "selected" : ""}>
+                    ${escapeHTML(course.name)}${course.code ? " (" + escapeHTML(course.code) + ")" : ""}
+                </option>
+            `).join("");
+
+            const statusOptionsHTML = SESSION_STATUSES.map(status => `
+                <option value="${status}" ${existing && existing.status === status ? "selected" : ""}>${status}</option>
+            `).join("");
+
+            const durationOptionsHTML = SESSION_DURATIONS.map(minutes => `
+                <option value="${minutes}" ${existing && Number(existing.duration) === minutes ? "selected" : ""}>
+                    ${formatDuration(minutes)}
+                </option>
+            `).join("");
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="${backTarget}">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${existing ? "✏️ Edit Session" : "⏱️ New Study Session"}</h1>
+                        <p>${existing ? "Update the details below." : "Pick a course, a topic and block out some focused time."}</p>
+                    </div>
+
+                    <div class="assessment-form">
+                        <label class="form-field">
+                            <span class="form-label">Course</span>
+                            <select id="session-course" onchange="updateSessionTopicOptions()">${courseOptionsHTML}</select>
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Topic</span>
+                            <select id="session-topic">${sessionTopicOptionsHTML(courseId, existing ? existing.topicId : "")}</select>
+                        </label>
+
+                        <div class="form-row">
+                            <label class="form-field">
+                                <span class="form-label">Date</span>
+                                <input type="date" id="session-date" value="${existing ? escapeHTML(existing.date || "") : ""}">
+                            </label>
+
+                            <label class="form-field">
+                                <span class="form-label">Start time</span>
+                                <input type="time" id="session-time" value="${existing ? escapeHTML(existing.startTime || "") : ""}">
+                            </label>
+                        </div>
+
+                        <div class="form-row">
+                            <label class="form-field">
+                                <span class="form-label">Duration</span>
+                                <select id="session-duration">${durationOptionsHTML}</select>
+                            </label>
+
+                            <label class="form-field">
+                                <span class="form-label">Status</span>
+                                <select id="session-status">${statusOptionsHTML}</select>
+                            </label>
+                        </div>
+
+                        <label class="form-field">
+                            <span class="form-label">Notes (optional)</span>
+                            <textarea id="session-notes" rows="3" placeholder="What do you want to get through?">${existing ? escapeHTML(existing.notes || "") : ""}</textarea>
+                        </label>
+
+                        <p id="session-error" class="form-error"></p>
+
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="add-course-button"
+                                onclick="saveSession('${existing ? escapeHTML(existing.id) : ""}')"
+                            >${existing ? "Save Changes" : "Add Session"}</button>
+
+                            <button type="button" class="back-button inline" onclick="${backTarget}">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function saveSession(sessionId) {
+            const courseSelect = document.getElementById("session-course");
+            const topicSelect = document.getElementById("session-topic");
+            const dateInput = document.getElementById("session-date");
+            const timeInput = document.getElementById("session-time");
+            const durationSelect = document.getElementById("session-duration");
+            const statusSelect = document.getElementById("session-status");
+            const notesInput = document.getElementById("session-notes");
+            const errorBox = document.getElementById("session-error");
+
+            const showError = message => {
+                if (errorBox) {
+                    errorBox.className = "form-error visible";
+                    errorBox.innerHTML = message;
+                }
+            };
+
+            const course = getCourseById(courseSelect.value);
+            const topicId = topicSelect.value;
+            const date = dateInput.value;
+            const startTime = timeInput.value;
+            const duration = Number(durationSelect.value);
+            const status = statusSelect.value;
+            const notes = notesInput.value.trim();
+
+            if (!course) {
+                showError("Please choose one of your saved courses.");
+                return;
+            }
+
+            if (topicId && !loadTopicsFor(course.id).some(topic => topic.id === topicId)) {
+                showError("Please choose a topic that belongs to the selected course.");
+                return;
+            }
+
+            if (!date) {
+                showError("Please choose a date.");
+                return;
+            }
+
+            if (!startTime) {
+                showError("Please choose a start time.");
+                return;
+            }
+
+            if (!isFinite(duration) || duration <= 0) {
+                showError("Please choose how long the session should be.");
+                return;
+            }
+
+            if (!SESSION_STATUSES.includes(status)) {
+                showError("Please choose a session status.");
+                return;
+            }
+
+            const sessions = loadSessions();
+            const existing = sessionId
+                ? sessions.find(item => item.id === sessionId)
+                : null;
+
+            if (sessionId && !existing) {
+                openSessions();
+                return;
+            }
+
+            if (existing) {
+                existing.courseId = course.id;
+                existing.topicId = topicId;
+                existing.date = date;
+                existing.startTime = startTime;
+                existing.duration = duration;
+                existing.status = status;
+                existing.notes = notes;
+            } else {
+                sessions.push({
+                    id: makeId("session"),
+                    courseId: course.id,
+                    topicId: topicId,
+                    date: date,
+                    startTime: startTime,
+                    duration: duration,
+                    status: status,
+                    notes: notes
+                });
+            }
+
+            saveSessions(sessions);
+
+            openSessions();
+        }
+
+        function setSessionStatus(sessionId, status) {
+            if (!SESSION_STATUSES.includes(status)) {
+                return;
+            }
+
+            const sessions = loadSessions();
+            const session = sessions.find(item => item.id === sessionId);
+
+            if (!session) {
+                openSessions();
+                return;
+            }
+
+            session.status = status;
+
+            saveSessions(sessions);
+
+            openSession(sessionId);
+        }
+
+        function deleteSession(sessionId) {
+            const sessions = loadSessions();
+            const index = sessions.findIndex(item => item.id === sessionId);
+
+            if (index === -1) {
+                openSessions();
+                return;
+            }
+
+            if (!confirm("Delete this study session? This cannot be undone.")) {
+                return;
+            }
+
+            const courseId = sessions[index].courseId;
+
+            sessions.splice(index, 1);
+
+            saveSessions(sessions);
+
+            openSessions(courseId);
+        }
+
+        function openSession(sessionId) {
+            const session = loadSessions().find(item => item.id === sessionId);
+
+            if (!session) {
+                openSessions();
+                return;
+            }
+
+            const course = getCourseById(session.courseId);
+            const courseName = course ? course.name : "Unknown course";
+            const status = SESSION_STATUSES.includes(session.status)
+                ? session.status
+                : "Planned";
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openSessions('${escapeHTML(session.courseId)}')">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${escapeHTML(courseName)}</h1>
+                        <p>${escapeHTML(sessionTopicName(session))}</p>
+                    </div>
+
+                    <div class="detail-card">
+                        <div class="detail-row">
+                            <span class="detail-label">Course</span>
+                            <span class="detail-value">${escapeHTML(courseName)}${course && course.code ? " (" + escapeHTML(course.code) + ")" : ""}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Topic</span>
+                            <span class="detail-value">${escapeHTML(sessionTopicName(session))}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Date</span>
+                            <span class="detail-value">${escapeHTML(formatSessionDate(session))}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Time</span>
+                            <span class="detail-value">${escapeHTML(formatSessionTimeRange(session))}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Duration</span>
+                            <span class="detail-value">${escapeHTML(formatDuration(sessionDurationMinutes(session)))}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Status</span>
+                            <span class="detail-value"><span class="session-status ${sessionStatusClass(status)}">${escapeHTML(status)}</span></span>
+                        </div>
+
+                        <div class="detail-row notes">
+                            <span class="detail-label">Notes</span>
+                            <span class="detail-value">${session.notes ? escapeHTML(session.notes) : "No notes added."}</span>
+                        </div>
+                    </div>
+
+                    <div class="detail-actions">
+                        <button type="button" class="add-course-button" onclick="openSessionForm('${escapeHTML(session.id)}')">Edit</button>
+                        ${status !== "Completed" ? `<button type="button" class="add-course-button" onclick="setSessionStatus('${escapeHTML(session.id)}', 'Completed')">Mark Completed</button>` : ""}
+                        ${status !== "Skipped" ? `<button type="button" class="back-button inline" onclick="setSessionStatus('${escapeHTML(session.id)}', 'Skipped')">Skip</button>` : ""}
+                        ${status !== "Planned" ? `<button type="button" class="back-button inline" onclick="setSessionStatus('${escapeHTML(session.id)}', 'Planned')">Re-plan</button>` : ""}
+                        <button type="button" class="delete-button" onclick="deleteSession('${escapeHTML(session.id)}')">Delete</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function topicStats(courseId) {
+            const topics = courseId
+                ? loadTopicsFor(courseId)
+                : loadCourses().reduce(
+                    (all, course) => all.concat(loadTopicsFor(course.id)),
+                    []
+                );
+            const completed = completedTopicCount(topics);
+            const total = topics.length;
+
+            return {
+                total: total,
+                completed: completed,
+                needsRevision: topics.filter(topic => topic.status === "Needs Revision").length,
+                percent: total ? Math.round((completed / total) * 100) : 0
+            };
+        }
+
+        function sessionStats(courseId) {
+            const sessions = courseId
+                ? loadSessions().filter(item => item.courseId === courseId)
+                : loadSessions();
+
+            return {
+                total: sessions.length,
+                planned: sessions.filter(item => item.status === "Planned").length,
+                completed: sessions.filter(item => item.status === "Completed").length,
+                totalMinutes: sessions.reduce(
+                    (sum, item) => sum + sessionDurationMinutes(item),
+                    0
+                )
+            };
+        }
+
+        function assessmentIsUpcoming(assessment) {
+            const timestamp = assessmentTimestamp(assessment);
+
+            return !isNaN(timestamp) && timestamp >= Date.now();
+        }
+
+        function assessmentStats(courseId) {
+            const assessments = courseId
+                ? loadAssessments().filter(item => item.courseId === courseId)
+                : loadAssessments();
+
+            return {
+                total: assessments.length,
+                upcoming: assessments.filter(assessmentIsUpcoming).length
+            };
+        }
+
+        function overallStats() {
+            const topics = topicStats(null);
+            const sessions = sessionStats(null);
+            const assessments = assessmentStats(null);
+
+            return {
+                courses: loadCourses().length,
+                topics: topics.total,
+                completedTopics: topics.completed,
+                topicPercent: topics.percent,
+                sessions: sessions.total,
+                completedSessions: sessions.completed,
+                totalMinutes: sessions.totalMinutes,
+                upcomingAssessments: assessments.upcoming
+            };
+        }
+
+        function attentionGroups() {
+            const courseName = courseId => {
+                const course = getCourseById(courseId);
+                return course ? course.name : "Unknown course";
+            };
+
+            const needsRevision = [];
+
+            loadCourses().forEach(course => {
+                loadTopicsFor(course.id).forEach(topic => {
+                    if (topic.status === "Needs Revision") {
+                        needsRevision.push(
+                            `${course.name} — ${topic.name}`
+                        );
+                    }
+                });
+            });
+
+            const now = Date.now();
+            const soonLimit = now + PROGRESS_SOON_DAYS * 86400000;
+
+            const soonAssessments = sortAssessments(
+                loadAssessments().filter(assessment => {
+                    const timestamp = assessmentTimestamp(assessment);
+
+                    return !isNaN(timestamp) && timestamp >= now && timestamp <= soonLimit;
+                })
+            ).map(assessment =>
+                `${courseName(assessment.courseId)} — ${assessment.name} (${assessment.type}) · ${countdownFor(assessment).label}`
+            );
+
+            const openSessions = sortSessions(
+                loadSessions().filter(session => session.status === "Planned" && !sessionIsUpcoming(session))
+            ).map(session =>
+                `${courseName(session.courseId)} — ${sessionTopicName(session)} · planned for ${formatSessionDate(session)}, ${formatSessionTimeRange(session)}`
+            );
+
+            return [
+                {
+                    title: `Topics marked Needs Revision (${needsRevision.length})`,
+                    items: needsRevision,
+                    empty: "No topics are marked Needs Revision."
+                },
+                {
+                    title: `Assessments in the next ${PROGRESS_SOON_DAYS} days (${soonAssessments.length})`,
+                    items: soonAssessments,
+                    empty: `No assessments in the next ${PROGRESS_SOON_DAYS} days.`
+                },
+                {
+                    title: `Planned sessions not completed (${openSessions.length})`,
+                    items: openSessions,
+                    empty: "No planned sessions are past their start time."
+                }
+            ];
+        }
+
+        function attentionSectionHTML(groups) {
+            const filled = groups.filter(group => group.items.length);
+
+            if (!filled.length) {
+                return `
+                    <div class="attention-card empty-state">
+                        <h2>Nothing to show</h2>
+                        <p>No topics marked Needs Revision, no assessments in the next ${PROGRESS_SOON_DAYS} days, and no planned sessions past their start time.</p>
+                    </div>
+                `;
+            }
+
+            return filled.map(group => {
+                const shown = group.items.slice(0, ATTENTION_LIMIT);
+                const extra = group.items.length - shown.length;
+
+                return `
+                    <div class="attention-card">
+                        <h2 class="attention-title">${escapeHTML(group.title)}</h2>
+                        <ul class="attention-list">
+                            ${shown.map(item => `<li>${escapeHTML(item)}</li>`).join("")}
+                        </ul>
+                        ${extra > 0 ? `<p class="attention-more">and ${extra} more</p>` : ""}
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function statTileHTML(value, label) {
+            return `
+                <div class="stat-tile">
+                    <span class="stat-value">${escapeHTML(String(value))}</span>
+                    <span class="stat-label">${escapeHTML(label)}</span>
+                </div>
+            `;
+        }
+
+        function overallProgressHTML(stats) {
+            const topicSummary = stats.topics
+                ? `${stats.completedTopics} of ${stats.topics} topics (${stats.topicPercent}%)`
+                : "No topics yet";
+
+            return `
+                <div class="overall-card">
+                    <div class="progress-block">
+                        <div class="progress-label">
+                            <span>Overall topic completion</span>
+                            <span>${escapeHTML(topicSummary)}</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: ${stats.topicPercent}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="stat-grid">
+                        ${statTileHTML(stats.courses, "Total courses")}
+                        ${statTileHTML(stats.topics, "Total topics")}
+                        ${statTileHTML(stats.completedTopics, "Completed topics")}
+                        ${statTileHTML(stats.topicPercent + "%", "Topic completion")}
+                        ${statTileHTML(stats.sessions, "Total study sessions")}
+                        ${statTileHTML(stats.completedSessions, "Completed sessions")}
+                        ${statTileHTML(formatDuration(stats.totalMinutes), "Total study time")}
+                        ${statTileHTML(stats.upcomingAssessments, "Upcoming assessments")}
+                    </div>
+                </div>
+            `;
+        }
+
+        function progressCourseCardHTML(course) {
+            const topics = topicStats(course.id);
+            const sessions = sessionStats(course.id);
+            const assessments = assessmentStats(course.id);
+
+            const topicSummary = topics.total
+                ? `${topics.completed} of ${topics.total} (${topics.percent}%)`
+                : "No topics yet";
+
+            return `
+                <div class="progress-course-card">
+                    <div class="progress-course-head">
+                        <h2>${escapeHTML(course.name)}</h2>
+                        <p>${course.code ? escapeHTML(course.code) : "Course code not added"}</p>
+                    </div>
+
+                    <div class="progress-block">
+                        <div class="progress-label">
+                            <span>Topic completion</span>
+                            <span>${escapeHTML(topicSummary)}</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: ${topics.percent}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="stat-grid stat-grid-3">
+                        ${statTileHTML(topics.total, "Topics")}
+                        ${statTileHTML(topics.completed, "Completed topics")}
+                        ${statTileHTML(topics.percent + "%", "Topic completion")}
+                        ${statTileHTML(sessions.planned, "Planned sessions")}
+                        ${statTileHTML(sessions.completed, "Completed sessions")}
+                        ${statTileHTML(formatDuration(sessions.totalMinutes), "Study time")}
+                        ${statTileHTML(assessments.upcoming, "Upcoming assessments")}
+                    </div>
+                </div>
+            `;
+        }
+
+        function openProgress() {
+            const courses = loadCourses();
+            const courseCards = courses.length
+                ? courses.map(progressCourseCardHTML).join("")
+                : `
+                    <div class="progress-course-card empty-state">
+                        <h2>No courses yet</h2>
+                        <p>Add a course in My Courses to start tracking your progress.</p>
+                        <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                    </div>
+                `;
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📊 My Progress</h1>
+                        <p>Calculated from your courses, topics, sessions and assessments.</p>
+                    </div>
+
+                    <h2 class="list-heading">Overall</h2>
+                    ${overallProgressHTML(overallStats())}
+
+                    <h2 class="list-heading">Per course</h2>
+                    <div class="progress-course-list">
+                        ${courseCards}
+                    </div>
+
+                    <h2 class="list-heading">Needs Attention</h2>
+                    ${attentionSectionHTML(attentionGroups())}
+                </div>
+            `;
+        }
+
+        const PLANNER_DEFAULT_START = "17:00";
+
+        const plannerState = {
+            assessmentId: "",
+            topicIds: [],
+            dates: [],
+            duration: 60,
+            startTime: PLANNER_DEFAULT_START,
+            proposal: null
+        };
+
+        function resetPlanner() {
+            plannerState.assessmentId = "";
+            plannerState.topicIds = [];
+            plannerState.dates = [];
+            plannerState.duration = 60;
+            plannerState.startTime = PLANNER_DEFAULT_START;
+            plannerState.proposal = null;
+        }
+
+        function startOfToday() {
+            const now = new Date();
+
+            return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        }
+
+        function plannerCourseName(courseId) {
+            const course = getCourseById(courseId);
+
+            return course ? course.name : "Unknown course";
+        }
+
+        function plannerEmptyHTML(title, message, actionLabel, actionCall) {
+            return `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>🗓️ Study Planner</h1>
+                        <p>Turn an upcoming assessment into a study plan.</p>
+                    </div>
+
+                    <div class="planner-card empty-state">
+                        <h2>${escapeHTML(title)}</h2>
+                        <p>${escapeHTML(message)}</p>
+                        <button type="button" class="add-course-button" onclick="${actionCall}">${escapeHTML(actionLabel)}</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function createPlannedSession(details) {
+            const sessions = loadSessions();
+            const session = {
+                id: makeId("session"),
+                courseId: details.courseId,
+                topicId: details.topicId || "",
+                date: details.date,
+                startTime: details.startTime,
+                duration: details.duration,
+                status: "Planned",
+                notes: details.notes || ""
+            };
+
+            sessions.push(session);
+            saveSessions(sessions);
+
+            return session;
+        }
+
+        function plannerAssessment() {
+            return loadAssessments().find(item => item.id === plannerState.assessmentId) || null;
+        }
+
+        function plannerUpcomingAssessments() {
+            return sortAssessments(loadAssessments().filter(assessmentIsUpcoming));
+        }
+
+        function sessionIsToday(session) {
+            const timestamp = sessionTimestamp(session);
+
+            if (isNaN(timestamp)) {
+                return false;
+            }
+
+            return new Date(timestamp).toDateString() === new Date().toDateString();
+        }
+
+        function todaySessions() {
+            const today = loadSessions().filter(sessionIsToday);
+
+            return {
+                planned: sortSessions(today.filter(item => item.status === "Planned")),
+                done: today
+                    .filter(item => item.status === "Completed" || item.status === "Skipped")
+                    .sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a))
+            };
+        }
+
+        function needsRevisionTopics() {
+            const items = [];
+
+            loadCourses().forEach(course => {
+                loadTopicsFor(course.id).forEach(topic => {
+                    if (topic.status === "Needs Revision") {
+                        items.push({ course: course, topic: topic });
+                    }
+                });
+            });
+
+            return items;
+        }
+
+        function timeGreeting() {
+            const hour = new Date().getHours();
+
+            if (hour < 12) {
+                return "Good morning";
+            }
+
+            if (hour < 17) {
+                return "Good afternoon";
+            }
+
+            return "Good evening";
+        }
+
+        function todayProgressHTML(stats) {
+            const summary = stats.topics
+                ? `${stats.completedTopics} of ${stats.topics} topics (${stats.topicPercent}%)`
+                : "No topics yet";
+
+            return `
+                <div class="progress-block">
+                    <div class="progress-label">
+                        <span>Topic completion</span>
+                        <span>${escapeHTML(summary)}</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" style="width: ${stats.topicPercent}%"></div>
+                    </div>
+                </div>
+
+                <div class="stat-grid stat-grid-3">
+                    ${statTileHTML(stats.sessions, "Sessions planned")}
+                    ${statTileHTML(stats.completedSessions, "Sessions done")}
+                    ${statTileHTML(formatDuration(stats.totalMinutes), "Study time")}
+                    ${statTileHTML(stats.upcomingAssessments, "Upcoming assessments")}
+                </div>
+            `;
+        }
+
+        function openToday() {
+            const courses = loadCourses();
+
+            if (!courses.length) {
+                document.body.innerHTML = `
+                    <div class="study-page">
+                        <button class="back-button" onclick="openStudy()">← Back</button>
+
+                        <div class="study-heading">
+                            <h1>📌 Today</h1>
+                            <p>${escapeHTML(timeGreeting())} — here's where your study stands today.</p>
+                        </div>
+
+                        <div class="today-card empty-state">
+                            <h2>No courses yet</h2>
+                            <p>Add a course in My Courses first — your day is built from your courses, topics and sessions.</p>
+                            <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const today = todaySessions();
+            const nextAssessment = plannerUpcomingAssessments()[0] || null;
+            const revision = needsRevisionTopics();
+            const stats = overallStats();
+
+            const plannedMinutes = today.planned.reduce(
+                (sum, item) => sum + sessionDurationMinutes(item),
+                0
+            );
+            const doneMinutes = today.done
+                .filter(item => item.status === "Completed")
+                .reduce((sum, item) => sum + sessionDurationMinutes(item), 0);
+
+            const focusList = today.planned.length
+                ? `<div class="session-list">${today.planned.map(sessionCardHTML).join("")}</div>`
+                : '<p class="today-empty">No study sessions are planned for today.</p>';
+
+            const doneList = today.done.length
+                ? `<div class="session-list">${today.done.map(sessionCardHTML).join("")}</div>`
+                : '<p class="today-empty">Nothing completed or skipped yet today.</p>';
+
+            const nextBlock = nextAssessment
+                ? `
+                    <div class="today-assessment">
+                        <span class="assessment-name">${escapeHTML(nextAssessment.name)}</span>
+                        <span class="assessment-meta">${escapeHTML(plannerCourseName(nextAssessment.courseId))}</span>
+                        <div class="today-assessment-when">
+                            <span class="type-badge">${escapeHTML(nextAssessment.type)}</span>
+                            <span class="assessment-when">${escapeHTML(formatAssessmentDate(nextAssessment))} · ${escapeHTML(formatAssessmentTime(nextAssessment))}</span>
+                            ${countdownPillHTML(countdownFor(nextAssessment))}
+                        </div>
+                    </div>
+                `
+                : '<p class="today-empty">No upcoming assessments.</p>';
+
+            const revisionList = revision.length
+                ? `
+                    <ul class="attention-list">
+                        ${revision.map(item => `<li>${escapeHTML(item.course.name)} — ${escapeHTML(item.topic.name)}</li>`).join("")}
+                    </ul>
+                `
+                : '<p class="today-empty">No topics are marked Needs Revision.</p>';
+
+            const todaySub = [
+                today.planned.length + " planned",
+                formatDuration(plannedMinutes) + " to study",
+                today.done.length ? today.done.length + " done" : null,
+                doneMinutes ? formatDuration(doneMinutes) + " completed" : null
+            ].filter(Boolean).join(" · ");
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📌 Today</h1>
+                        <p>${escapeHTML(timeGreeting())} — here's where your study stands today.</p>
+                    </div>
+
+                    <div class="today-card focus">
+                        <h2 class="today-title">Focus today</h2>
+                        <p class="today-sub">${escapeHTML(todaySub)}</p>
+                        ${focusList}
+                    </div>
+
+                    <div class="today-card">
+                        <h2 class="today-title">Next assessment</h2>
+                        ${nextBlock}
+                    </div>
+
+                    <div class="today-card">
+                        <h2 class="today-title">Done today</h2>
+                        <p class="today-sub">${today.done.length ? escapeHTML(formatDuration(doneMinutes) + " completed") : "Completed and skipped sessions"}</p>
+                        ${doneList}
+                    </div>
+
+                    <div class="today-card">
+                        <h2 class="today-title">Needs revision</h2>
+                        <p class="today-sub">${revision.length} topic${revision.length === 1 ? "" : "s"} marked Needs Revision</p>
+                        ${revisionList}
+                    </div>
+
+                    <div class="today-card">
+                        <h2 class="today-title">Overall progress</h2>
+                        ${todayProgressHTML(stats)}
+                    </div>
+                </div>
+            `;
+        }
+
+
+        function plannerSelectedTopics() {
+            const assessment = plannerAssessment();
+
+            if (!assessment) {
+                return [];
+            }
+
+            return loadTopicsFor(assessment.courseId).filter(topic =>
+                plannerState.topicIds.includes(topic.id)
+            );
+        }
+
+        function plannerSessionStart(date, startTime) {
+            return new Date(date + "T" + (startTime || "00:00")).getTime();
+        }
+
+        function plannerDatesBeforeAssessment(assessment, dates, startTime) {
+            const assessmentTime = assessmentTimestamp(assessment);
+
+            if (isNaN(assessmentTime)) {
+                return false;
+            }
+
+            return dates.every(date =>
+                !isNaN(plannerSessionStart(date, startTime)) &&
+                plannerSessionStart(date, startTime) < assessmentTime
+            );
+        }
+
+        function plannerShowError(message) {
+            const errorBox = document.getElementById("planner-error");
+
+            if (errorBox) {
+                errorBox.className = "form-error visible";
+                errorBox.innerHTML = message;
+            }
+        }
+
+        function selectPlannerAssessment() {
+            const select = document.getElementById("planner-assessment");
+
+            plannerState.assessmentId = select ? select.value : "";
+            plannerState.topicIds = [];
+            plannerState.proposal = null;
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function togglePlannerTopic(topicId) {
+            const index = plannerState.topicIds.indexOf(topicId);
+
+            if (index === -1) {
+                plannerState.topicIds.push(topicId);
+            } else {
+                plannerState.topicIds.splice(index, 1);
+            }
+
+            plannerState.proposal = null;
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function addPlannerDate() {
+            const input = document.getElementById("planner-date");
+            const value = input ? input.value : "";
+
+            if (!value) {
+                plannerShowError("Please choose a study date.");
+                return;
+            }
+
+            const assessment = plannerAssessment();
+
+            if (!assessment) {
+                plannerShowError("Choose an upcoming assessment first.");
+                return;
+            }
+
+            const dayStart = new Date(value + "T00:00").getTime();
+            const assessmentTime = assessmentTimestamp(assessment);
+
+            if (isNaN(dayStart) || isNaN(assessmentTime)) {
+                plannerShowError("Please choose a valid study date.");
+                return;
+            }
+
+            if (dayStart < startOfToday()) {
+                plannerShowError("Study dates cannot be in the past.");
+                return;
+            }
+
+            // the session itself (date + chosen start time) must finish before the assessment
+            if (plannerSessionStart(value, plannerState.startTime) >= assessmentTime) {
+                plannerShowError("Study dates must be before the assessment.");
+                return;
+            }
+
+            if (plannerState.dates.includes(value)) {
+                plannerShowError("That date is already in your plan.");
+                return;
+            }
+
+            plannerState.dates.push(value);
+            plannerState.proposal = null;
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function removePlannerDate(index) {
+            plannerState.dates.splice(index, 1);
+            plannerState.proposal = null;
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function setPlannerDuration(value) {
+            const duration = Number(value);
+
+            if (isFinite(duration) && duration > 0) {
+                plannerState.duration = duration;
+                plannerState.proposal = null;
+            }
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function setPlannerStartTime(value) {
+            if (/^\d{2}:\d{2}$/.test(value)) {
+                plannerState.startTime = value;
+                plannerState.proposal = null;
+            }
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function generatePlan() {
+            const assessment = plannerAssessment();
+
+            if (!assessment) {
+                plannerShowError("Choose an upcoming assessment first.");
+                return;
+            }
+
+            const topics = plannerSelectedTopics();
+
+            if (!topics.length) {
+                plannerShowError("Select at least one topic to prepare for.");
+                return;
+            }
+
+            if (!plannerState.dates.length) {
+                plannerShowError("Add at least one study date.");
+                return;
+            }
+
+            if (!plannerDatesBeforeAssessment(assessment, plannerState.dates, plannerState.startTime)) {
+                plannerShowError("Every session must start before the assessment.");
+                return;
+            }
+
+            const dates = [...plannerState.dates].sort();
+
+            plannerState.proposal = topics.map((topic, index) => ({
+                courseId: assessment.courseId,
+                topicId: topic.id,
+                date: dates[index % dates.length]
+            }));
+
+            openPlanner(plannerState.assessmentId);
+        }
+
+        function cancelPlan() {
+            resetPlanner();
+
+            openPlanner();
+        }
+
+        function confirmPlan() {
+            const assessment = plannerAssessment();
+
+            if (!assessment || !plannerState.proposal) {
+                cancelPlan();
+                return;
+            }
+
+            const proposal = plannerState.proposal;
+
+            proposal.forEach(item => {
+                createPlannedSession({
+                    courseId: item.courseId,
+                    topicId: item.topicId,
+                    date: item.date,
+                    startTime: plannerState.startTime,
+                    duration: plannerState.duration,
+                    notes: "Planned for " + assessment.name
+                });
+            });
+
+            const courseId = assessment.courseId;
+
+            resetPlanner();
+
+            openSessions(courseId);
+        }
+
+        function plannerReviewHTML(assessment, topics) {
+            if (!plannerState.proposal) {
+                return "";
+            }
+
+            const items = plannerState.proposal.map(item => {
+                const topic = topics.find(candidate => candidate.id === item.topicId);
+                const when = {
+                    date: item.date,
+                    startTime: plannerState.startTime,
+                    duration: plannerState.duration
+                };
+
+                return `
+                    <li class="plan-item">
+                        <span class="plan-when">${escapeHTML(formatSessionDate(when))} · ${escapeHTML(formatSessionTimeRange(when))}</span>
+                        <span class="plan-topic">${escapeHTML(topic ? topic.name : "No topic selected")}</span>
+                    </li>
+                `;
+            }).join("");
+
+            return `
+                <div class="planner-card plan-review">
+                    <h2 class="step-title">Proposed plan</h2>
+                    <p class="plan-summary">
+                        ${plannerState.proposal.length} session${plannerState.proposal.length === 1 ? "" : "s"} across ${plannerState.dates.length} date${plannerState.dates.length === 1 ? "" : "s"} · ${escapeHTML(formatDuration(plannerState.duration))} each · ${escapeHTML(assessment.name)}
+                    </p>
+
+                    <ul class="plan-list">${items}</ul>
+
+                    <div class="plan-actions">
+                        <button type="button" class="add-course-button" onclick="confirmPlan()">Confirm and create sessions</button>
+                        <button type="button" class="back-button inline" onclick="cancelPlan()">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openPlanner(assessmentId) {
+            const courses = loadCourses();
+
+            if (!courses.length) {
+                document.body.innerHTML = plannerEmptyHTML(
+                    "No courses yet",
+                    "Add a course in My Courses first — a study plan is built around one of your courses and its topics.",
+                    "Go to My Courses",
+                    "openCourses()"
+                );
+                return;
+            }
+
+            const upcoming = plannerUpcomingAssessments();
+
+            if (assessmentId) {
+                const match = upcoming.find(item => item.id === assessmentId);
+
+                if (match) {
+                    plannerState.assessmentId = match.id;
+                }
+            }
+
+            if (plannerState.assessmentId && !upcoming.some(item => item.id === plannerState.assessmentId)) {
+                resetPlanner();
+            }
+
+            if (!upcoming.length) {
+                document.body.innerHTML = plannerEmptyHTML(
+                    "No upcoming assessments",
+                    "A study plan is built from an upcoming assessment. Add one and come back here.",
+                    "Go to Upcoming Assessments",
+                    "openAssessments()"
+                );
+                return;
+            }
+
+            const assessment = plannerAssessment();
+            const topics = assessment ? loadTopicsFor(assessment.courseId) : [];
+
+            const assessmentOptions = upcoming.map(item => `
+                <option value="${escapeHTML(item.id)}" ${item.id === plannerState.assessmentId ? "selected" : ""}>
+                    ${escapeHTML(item.name)} — ${escapeHTML(plannerCourseName(item.courseId))} · ${escapeHTML(formatAssessmentDate(item))}
+                </option>
+            `).join("");
+
+            const assessmentSummary = assessment
+                ? `
+                    <div class="planner-summary">
+                        <div class="planner-summary-row">
+                            <span>Course</span>
+                            <span>${escapeHTML(plannerCourseName(assessment.courseId))}</span>
+                        </div>
+                        <div class="planner-summary-row">
+                            <span>When</span>
+                            <span>${escapeHTML(formatAssessmentDate(assessment))} · ${escapeHTML(formatAssessmentTime(assessment))}</span>
+                        </div>
+                        <div class="planner-summary-row">
+                            <span>Countdown</span>
+                            <span><span class="countdown-pill ${countdownFor(assessment).overdue ? "overdue" : ""}">${escapeHTML(countdownFor(assessment).label)}</span></span>
+                        </div>
+                    </div>
+                `
+                : '<p class="planner-hint">Choose the upcoming assessment you want to prepare for.</p>';
+
+            const topicStep = assessment
+                ? topics.length
+                    ? `
+                        <div class="planner-card">
+                            <h2 class="step-title">2 · Choose topics</h2>
+                            <p class="planner-hint">Topics from ${escapeHTML(plannerCourseName(assessment.courseId))}.</p>
+                            <div class="topic-check-list">
+                                ${topics.map(topic => `
+                                    <label class="topic-check">
+                                        <input
+                                            type="checkbox"
+                                            onchange="togglePlannerTopic('${escapeHTML(topic.id)}')"
+                                            ${plannerState.topicIds.includes(topic.id) ? "checked" : ""}
+                                        >
+                                        <span class="topic-check-name">${escapeHTML(topic.name)}</span>
+                                        <span class="topic-check-status">${escapeHTML(topic.status || "Not Started")}</span>
+                                    </label>
+                                `).join("")}
+                            </div>
+                        </div>
+                    `
+                    : `
+                        <div class="planner-card empty-state">
+                            <h2>No topics in this course yet</h2>
+                            <p>Add topics to ${escapeHTML(plannerCourseName(assessment.courseId))} first — a plan is built from the topics you want to revise.</p>
+                            <button type="button" class="add-course-button" onclick="openTopics('${escapeHTML(assessment.courseId)}')">Add topics</button>
+                        </div>
+                    `
+                : "";
+
+            const dateChips = plannerState.dates.map((date, index) => `
+                <span class="date-chip">
+                    ${escapeHTML(formatSessionDate({ date: date }))}
+                    <button type="button" class="date-chip-remove" onclick="removePlannerDate(${index})" aria-label="Remove date">✕</button>
+                </span>
+            `).join("");
+
+            const durationOptions = SESSION_DURATIONS.map(minutes => `
+                <option value="${minutes}" ${minutes === plannerState.duration ? "selected" : ""}>${escapeHTML(formatDuration(minutes))}</option>
+            `).join("");
+
+            const scheduleStep = assessment
+                ? `
+                    <div class="planner-card">
+                        <h2 class="step-title">3 · When will you study?</h2>
+
+                        <div class="date-add-row">
+                            <input type="date" id="planner-date">
+                            <button type="button" class="add-course-button" onclick="addPlannerDate()">Add date</button>
+                        </div>
+
+                        <div class="date-chips">${dateChips}</div>
+
+                        <div class="form-row">
+                            <label class="form-field">
+                                <span class="form-label">Session length</span>
+                                <select id="planner-duration" onchange="setPlannerDuration(this.value)">${durationOptions}</select>
+                            </label>
+
+                            <label class="form-field">
+                                <span class="form-label">Start time</span>
+                                <input type="time" id="planner-start" value="${plannerState.startTime}" onchange="setPlannerStartTime(this.value)">
+                            </label>
+                        </div>
+
+                        <p class="planner-hint">Every date must fall before ${escapeHTML(formatAssessmentDate(assessment))}.</p>
+                    </div>
+
+                    <p id="planner-error" class="form-error"></p>
+
+                    <div class="planner-actions">
+                        <button type="button" class="add-course-button" onclick="generatePlan()">Propose a plan</button>
+                        <button type="button" class="back-button inline" onclick="cancelPlan()">Cancel</button>
+                    </div>
+
+                    ${plannerReviewHTML(assessment, topics)}
+                `
+                : "";
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>🗓️ Study Planner</h1>
+                        <p>Pick an assessment, choose your topics and dates, and Skolar will spread the work out for you.</p>
+                    </div>
+
+                    <div class="planner-card">
+                        <h2 class="step-title">1 · Which assessment?</h2>
+                        <select id="planner-assessment" onchange="selectPlannerAssessment()">${assessmentOptions}</select>
+                        ${assessmentSummary}
+                    </div>
+
+                    ${topicStep}
+
+                    ${scheduleStep}
+                </div>
+            `;
+        }
+
+        function loadTimetable() {
+            try {
+                const raw = localStorage.getItem(TIMETABLE_KEY);
+
+                if (!raw) {
+                    return [];
+                }
+
+                const entries = JSON.parse(raw);
+
+                if (!Array.isArray(entries)) {
+                    return [];
+                }
+
+                return entries.filter(item => item && typeof item === "object");
+            } catch (error) {
+                console.error(error);
+
+                return [];
+            }
+        }
+
+        function saveTimetable(entries) {
+            localStorage.setItem(TIMETABLE_KEY, JSON.stringify(entries));
+        }
+
+        function timetableEntriesForDay(day) {
+            return loadTimetable()
+                .filter(item => item.day === day)
+                .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+        }
+
+        function timetableEntryHTML(entry) {
+            const course = getCourseById(entry.courseId);
+            const courseName = course ? course.name : "Unknown course";
+            const courseCode = course && course.code ? " · " + course.code : "";
+
+            return `
+                <div class="timetable-entry clickable" onclick="openTimetableEntry('${escapeHTML(entry.id)}')">
+                    <span class="timetable-time">${escapeHTML(entry.startTime)} – ${escapeHTML(entry.endTime)}</span>
+                    <span class="timetable-course">${escapeHTML(courseName)}${escapeHTML(courseCode)}</span>
+                    ${entry.room ? `<span class="timetable-meta">📍 ${escapeHTML(entry.room)}</span>` : ""}
+                </div>
+            `;
+        }
+
+        function timetableDayHTML(day) {
+            const entries = timetableEntriesForDay(day);
+            const todayIndex = (new Date().getDay() + 6) % 7;
+
+            return `
+                <div class="timetable-day ${day === TIMETABLE_DAYS[todayIndex] ? "is-today" : ""}">
+                    <h2 class="timetable-day-head">${escapeHTML(day)}</h2>
+                    ${entries.length
+                        ? entries.map(timetableEntryHTML).join("")
+                        : '<p class="timetable-day-empty">No classes</p>'}
+                </div>
+            `;
+        }
+
+        function openTimetable() {
+            const courses = loadCourses();
+
+            if (!courses.length) {
+                document.body.innerHTML = `
+                    <div class="study-page">
+                        <button class="back-button" onclick="openStudy()">← Back</button>
+
+                        <div class="study-heading">
+                            <h1>📅 Timetable</h1>
+                            <p>Your weekly classes, Monday to Sunday.</p>
+                        </div>
+
+                        <div class="planner-card empty-state">
+                            <h2>No courses yet</h2>
+                            <p>Add a course in My Courses first — every class is linked to one of your courses.</p>
+                            <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const entries = loadTimetable();
+            const subtitle = entries.length
+                ? entries.length + " class" + (entries.length === 1 ? "" : "es") + " this week"
+                : "Your weekly classes, Monday to Sunday.";
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📅 Timetable</h1>
+                        <p>${escapeHTML(subtitle)}</p>
+                    </div>
+
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="openTimetableForm()">＋ Add Class</button>
+                    </div>
+
+                    ${entries.length
+                        ? ""
+                        : `
+                            <div class="planner-card empty-state">
+                                <h2>No classes yet</h2>
+                                <p>Add your weekly classes and they'll appear here, Monday to Sunday.</p>
+                            </div>
+                        `}
+
+                    <div class="timetable-week">
+                        ${TIMETABLE_DAYS.map(timetableDayHTML).join("")}
+                    </div>
+                </div>
+            `;
+        }
+
+        function openTimetableForm(entryId) {
+            const courses = loadCourses();
+
+            if (!courses.length) {
+                openTimetable();
+                return;
+            }
+
+            const existing = entryId
+                ? loadTimetable().find(item => item.id === entryId)
+                : null;
+
+            const backTarget = existing
+                ? `openTimetableEntry('${escapeHTML(existing.id)}')`
+                : "openTimetable()";
+
+            const courseOptionsHTML = courses.map(course => `
+                <option value="${escapeHTML(course.id)}" ${existing && existing.courseId === course.id ? "selected" : ""}>
+                    ${escapeHTML(course.name)}${course.code ? " (" + escapeHTML(course.code) + ")" : ""}
+                </option>
+            `).join("");
+
+            const dayOptionsHTML = TIMETABLE_DAYS.map(day => `
+                <option value="${day}" ${existing && existing.day === day ? "selected" : ""}>${day}</option>
+            `).join("");
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="${backTarget}">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${existing ? "✏️ Edit Class" : "📅 New Class"}</h1>
+                        <p>${existing ? "Update the details below." : "Add a weekly class to your timetable."}</p>
+                    </div>
+
+                    <div class="assessment-form">
+                        <label class="form-field">
+                            <span class="form-label">Course</span>
+                            <select id="timetable-course">${courseOptionsHTML}</select>
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Day</span>
+                            <select id="timetable-day">${dayOptionsHTML}</select>
+                        </label>
+
+                        <div class="form-row">
+                            <label class="form-field">
+                                <span class="form-label">Start time</span>
+                                <input type="time" id="timetable-start" value="${existing ? escapeHTML(existing.startTime || "") : ""}">
+                            </label>
+
+                            <label class="form-field">
+                                <span class="form-label">End time</span>
+                                <input type="time" id="timetable-end" value="${existing ? escapeHTML(existing.endTime || "") : ""}">
+                            </label>
+                        </div>
+
+                        <label class="form-field">
+                            <span class="form-label">Room / location (optional)</span>
+                            <input type="text" id="timetable-room" value="${existing ? escapeHTML(existing.room || "") : ""}" placeholder="e.g. Room 204">
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Notes (optional)</span>
+                            <textarea id="timetable-notes" rows="3" placeholder="Anything worth remembering about this class">${existing ? escapeHTML(existing.notes || "") : ""}</textarea>
+                        </label>
+
+                        <p id="timetable-error" class="form-error"></p>
+
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="add-course-button"
+                                onclick="saveTimetableEntry('${existing ? escapeHTML(existing.id) : ""}')"
+                            >${existing ? "Save Changes" : "Add Class"}</button>
+
+                            <button type="button" class="back-button inline" onclick="${backTarget}">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function saveTimetableEntry(entryId) {
+            const courseSelect = document.getElementById("timetable-course");
+            const daySelect = document.getElementById("timetable-day");
+            const startInput = document.getElementById("timetable-start");
+            const endInput = document.getElementById("timetable-end");
+            const roomInput = document.getElementById("timetable-room");
+            const notesInput = document.getElementById("timetable-notes");
+            const errorBox = document.getElementById("timetable-error");
+
+            const showError = message => {
+                if (errorBox) {
+                    errorBox.className = "form-error visible";
+                    errorBox.innerHTML = message;
+                }
+            };
+
+            const course = getCourseById(courseSelect.value);
+            const day = daySelect.value;
+            const startTime = startInput.value;
+            const endTime = endInput.value;
+            const room = roomInput.value.trim();
+            const notes = notesInput.value.trim();
+
+            if (!course) {
+                showError("Please choose one of your saved courses.");
+                return;
+            }
+
+            if (!TIMETABLE_DAYS.includes(day)) {
+                showError("Please choose a day of the week.");
+                return;
+            }
+
+            if (!startTime) {
+                showError("Please choose a start time.");
+                return;
+            }
+
+            if (!endTime) {
+                showError("Please choose an end time.");
+                return;
+            }
+
+            if (endTime <= startTime) {
+                showError("End time must be after the start time.");
+                return;
+            }
+
+            const entries = loadTimetable();
+            const existing = entryId
+                ? entries.find(item => item.id === entryId)
+                : null;
+
+            if (entryId && !existing) {
+                openTimetable();
+                return;
+            }
+
+            if (existing) {
+                existing.courseId = course.id;
+                existing.day = day;
+                existing.startTime = startTime;
+                existing.endTime = endTime;
+                existing.room = room;
+                existing.notes = notes;
+            } else {
+                entries.push({
+                    id: makeId("class"),
+                    courseId: course.id,
+                    day: day,
+                    startTime: startTime,
+                    endTime: endTime,
+                    room: room,
+                    notes: notes
+                });
+            }
+
+            saveTimetable(entries);
+
+            openTimetable();
+        }
+
+        function openTimetableEntry(entryId) {
+            const entry = loadTimetable().find(item => item.id === entryId);
+
+            if (!entry) {
+                openTimetable();
+                return;
+            }
+
+            const course = getCourseById(entry.courseId);
+            const courseName = course ? course.name : "Unknown course";
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openTimetable()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${escapeHTML(courseName)}</h1>
+                        <p>${escapeHTML(entry.day || "No day set")}</p>
+                    </div>
+
+                    <div class="detail-card">
+                        <div class="detail-row">
+                            <span class="detail-label">Course</span>
+                            <span class="detail-value">${escapeHTML(courseName)}${course && course.code ? " (" + escapeHTML(course.code) + ")" : ""}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Day</span>
+                            <span class="detail-value">${escapeHTML(entry.day || "No day set")}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Time</span>
+                            <span class="detail-value">${escapeHTML(entry.startTime)} – ${escapeHTML(entry.endTime)}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Room</span>
+                            <span class="detail-value">${entry.room ? escapeHTML(entry.room) : "No room set"}</span>
+                        </div>
+
+                        <div class="detail-row notes">
+                            <span class="detail-label">Notes</span>
+                            <span class="detail-value">${entry.notes ? escapeHTML(entry.notes) : "No notes added."}</span>
+                        </div>
+                    </div>
+
+                    <div class="detail-actions">
+                        <button type="button" class="add-course-button" onclick="openTimetableForm('${escapeHTML(entry.id)}')">Edit</button>
+                        <button type="button" class="delete-button" onclick="deleteTimetableEntry('${escapeHTML(entry.id)}')">Delete</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function deleteTimetableEntry(entryId) {
+            const entries = loadTimetable();
+            const index = entries.findIndex(item => item.id === entryId);
+
+            if (index === -1) {
+                openTimetable();
+                return;
+            }
+
+            if (!confirm("Delete this class from your timetable?")) {
+                return;
+            }
+
+            entries.splice(index, 1);
+
+            saveTimetable(entries);
+
+            openTimetable();
+        }
 </script>
 
-</ body>
+</body>
 </html>
