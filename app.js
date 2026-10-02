@@ -42,6 +42,25 @@ const CONTEXT_MAX_TIMETABLE_DAYS = 7;
 
 const CHAT_ROLES = ["user", "assistant"];
 
+/* ---- rich text (safe Markdown rendering) limits ---- */
+const RICH_MAX_LENGTH = 20000;   /* hard cap on rendered characters */
+const RICH_MAX_NODES = 400;      /* hard cap on created elements   */
+const RICH_MAX_DEPTH = 3;        /* nested inline emphasis levels  */
+
+const RICH_FENCE = /^\s*```\s*([A-Za-z0-9_+#-]*)\s*$/;
+const RICH_FENCE_END = /^\s*```\s*$/;
+const RICH_BULLET = /^\s*[-*+]\s+(.*)$/;
+const RICH_NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
+const RICH_ANY_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
+const RICH_INDENTED = /^\s{2,}\S/;
+
+/* Ordered alternatives matter: fenced code, then code, then bold, then italic.
+   Emphasis never spans a newline - without that guard a stray ** on one line
+   pairs with one many lines later and swallows whole paragraphs.
+   Stored as a source string and compiled per call, because a shared global
+   regex is corrupted by the recursive calls below (lastIndex is state). */
+const RICH_INLINE_SOURCE = "(`+)([^`\\n]+?)\\1|\\*\\*([^\\n]+?)\\*\\*|__([^\\n]+?)__|\\*([^*\\n]+?)\\*|_([^_\\n]+?)_";
+
 /* In-memory state (single source of truth while the page lives). */
 let chatMessages = [];
 let chatIsSending = false;
@@ -504,7 +523,262 @@ function buildStudyContext() {
 
 
 /* ============================================================
-   3. Rendering (plain text only — textContent, never innerHTML)
+   3. Rendering — safe rich text
+
+   Messages arrive from the model as plain strings that often contain
+   Markdown. We convert that Markdown into real DOM nodes so it renders
+   as formatting instead of literal symbols.
+
+   SAFETY MODEL
+   -------------
+   Every piece of message text - from the student and from the model -
+   is treated as untrusted. Text is only ever placed into the document
+   through document.createTextNode() or element.textContent, so message
+   content can never become markup or execute. innerHTML is never used.
+   ============================================================ */
+
+function appendRichTextNode(target, text, budget) {
+    if (!text) {
+        return budget;
+    }
+
+    const parts = text.split("\n");
+
+    for (let i = 0; i < parts.length; i++) {
+        if (budget <= 0) {
+            return budget;
+        }
+
+        if (i > 0) {
+            target.appendChild(document.createElement("br"));
+            budget -= 1;
+        }
+
+        if (parts[i]) {
+            target.appendChild(document.createTextNode(parts[i]));
+            budget -= 1;
+        }
+    }
+
+    return budget;
+}
+
+function richIsWordChar(character) {
+    return !!character && /[A-Za-z0-9]/.test(character);
+}
+
+/* True when emphasis content is padded with whitespace, which Markdown does
+   not treat as emphasis - "a ** b ** c" must stay literal. */
+function richIsPadded(content) {
+    return !content || /^\s/.test(content) || /\s$/.test(content);
+}
+
+/* Renders `code`, **bold**, *italic* and single newlines into one parent.
+   Anything that is not a confident match is emitted as literal text. */
+function appendRichInline(parent, text, budget, depth) {
+    const source = typeof text === "string" ? text : "";
+    const level = depth || 0;
+
+    if (level >= RICH_MAX_DEPTH) {
+        return appendRichTextNode(parent, source, budget);
+    }
+
+    const pattern = new RegExp(RICH_INLINE_SOURCE, "g");
+
+    let cursor = 0;
+    let match;
+
+    while (budget > 0 && (match = pattern.exec(source)) !== null) {
+        let content = null;
+        let tag = null;
+
+        if (match[2] !== undefined) {
+            content = match[2];
+            tag = "code";
+        } else if (match[3] !== undefined || match[4] !== undefined) {
+            content = match[3] !== undefined ? match[3] : match[4];
+
+            if (!richIsPadded(content)) {
+                tag = "strong";
+            }
+        } else {
+            content = match[5] !== undefined ? match[5] : match[6];
+            const before = match.index > 0 ? source.charAt(match.index - 1) : "";
+            const after = source.charAt(match.index + match[0].length);
+            const intrawordUnderscore =
+                match[6] !== undefined && (richIsWordChar(before) || richIsWordChar(after));
+
+            if (!richIsPadded(content) && !intrawordUnderscore) {
+                tag = "em";
+            }
+        }
+
+        if (!tag) {
+            /* Not confident - emit one literal character and rescan the rest. */
+            budget = appendRichTextNode(parent, source.slice(cursor, match.index + 1), budget);
+            cursor = match.index + 1;
+            pattern.lastIndex = cursor;
+            continue;
+        }
+
+        if (match.index > cursor) {
+            budget = appendRichTextNode(parent, source.slice(cursor, match.index), budget);
+        }
+
+        const node = document.createElement(tag);
+
+        if (tag === "code") {
+            /* Code content is never re-parsed. */
+            node.textContent = content;
+        } else {
+            budget = appendRichInline(node, content, budget, level + 1);
+        }
+
+        parent.appendChild(node);
+        budget -= 1;
+
+        cursor = match.index + match[0].length;
+    }
+
+    if (cursor < source.length) {
+        budget = appendRichTextNode(parent, source.slice(cursor), budget);
+    }
+
+    return budget;
+}
+
+/* Renders a whole message into `target`, replacing nothing. */
+function renderRichText(target, text) {
+    if (!target) {
+        return;
+    }
+
+    const source = typeof text === "string" ? text : "";
+    const clipped = source.length > RICH_MAX_LENGTH
+        ? source.slice(0, RICH_MAX_LENGTH)
+        : source;
+
+    let budget = RICH_MAX_NODES;
+    const lines = clipped.split("\n");
+    let i = 0;
+
+    while (i < lines.length && budget > 0) {
+        const line = lines[i];
+
+        /* Fenced code block - preserved verbatim, never parsed as Markdown. */
+        if (RICH_FENCE.test(line)) {
+            const codeLines = [];
+            i += 1;
+
+            while (i < lines.length) {
+                if (RICH_FENCE_END.test(lines[i])) {
+                    i += 1;
+                    break;
+                }
+
+                codeLines.push(lines[i]);
+                i += 1;
+            }
+
+            const pre = document.createElement("pre");
+            pre.className = "chat-code-block";
+
+            const code = document.createElement("code");
+            code.textContent = codeLines.join("\n");
+
+            pre.appendChild(code);
+            target.appendChild(pre);
+
+            budget -= 2;
+            continue;
+        }
+
+        if (!line.trim()) {
+            i += 1;
+            continue;
+        }
+
+        const bullet = RICH_BULLET.exec(line);
+        const numbered = RICH_NUMBERED.exec(line);
+
+        /* Consecutive list items share one list element. */
+        if (bullet || numbered) {
+            const ordered = !!numbered;
+            const list = document.createElement(ordered ? "ol" : "ul");
+            list.className = "chat-list " + (ordered ? "ordered" : "unordered");
+
+            let lastItem = null;
+
+            while (i < lines.length && budget > 0) {
+                const nextBullet = RICH_BULLET.exec(lines[i]);
+                const nextNumbered = RICH_NUMBERED.exec(lines[i]);
+                const isMarker = ordered ? !!nextNumbered : !!nextBullet;
+
+                if (isMarker) {
+                    lastItem = document.createElement("li");
+                    lastItem.className = "chat-list-item";
+                    budget = appendRichInline(lastItem, (ordered ? nextNumbered : nextBullet)[1].trim(), budget);
+                    list.appendChild(lastItem);
+                    budget -= 1;
+                    i += 1;
+                    continue;
+                }
+
+                /* Indented, non-marker lines continue the previous item. */
+                if (lastItem && !RICH_ANY_MARKER.test(lines[i]) && RICH_INDENTED.test(lines[i])) {
+                    lastItem.appendChild(document.createTextNode(" "));
+                    budget = appendRichInline(lastItem, lines[i].trim(), budget);
+                    i += 1;
+                    continue;
+                }
+
+                break;
+            }
+
+            target.appendChild(list);
+            budget -= 1;
+            continue;
+        }
+
+        /* Plain block - gather until a blank line, a fence or a list marker. */
+        const paragraphLines = [];
+
+        while (i < lines.length) {
+            const current = lines[i];
+
+            if (!current.trim()) { break; }
+            if (current.indexOf("```") === 0) { break; }
+            if (RICH_ANY_MARKER.test(current)) { break; }
+
+            paragraphLines.push(current);
+            i += 1;
+        }
+
+        if (!paragraphLines.length) {
+            continue;
+        }
+
+        const paragraph = document.createElement("div");
+        paragraph.className = "chat-paragraph";
+
+        budget = appendRichInline(paragraph, paragraphLines.join("\n").trim(), budget);
+
+        target.appendChild(paragraph);
+        budget -= 1;
+    }
+}
+
+function setRichText(target, text) {
+    if (!target) {
+        return;
+    }
+
+    target.replaceChildren();
+    renderRichText(target, text);
+}
+
+/* ============================================================
+   4. Chat DOM and bubbles
    ============================================================ */
 
 function chatDom() {
@@ -539,8 +813,8 @@ function appendChatBubble(role, content, extraClass) {
     const bubble = document.createElement("div");
     bubble.className = "message " + role + (extraClass ? " " + extraClass : "");
 
-    /* textContent keeps every message inert — no HTML is ever interpreted. */
-    bubble.textContent = content;
+    /* Message content is never assigned as HTML - only as inert text nodes. */
+    renderRichText(bubble, content);
 
     chatMessagesEl.appendChild(bubble);
 
@@ -583,7 +857,7 @@ function setChatSending(sending) {
 function showChatError(message, pendingBubble) {
     if (pendingBubble) {
         pendingBubble.className = "message bot error";
-        pendingBubble.textContent = message;
+        setRichText(pendingBubble, message);
         scrollChatToBottom();
 
         return;
@@ -622,7 +896,7 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 
 /* ============================================================
-   4. Sending
+   5. Sending
    ============================================================ */
 
 function readChatInput() {
@@ -749,7 +1023,7 @@ async function sendMessage() {
         saveChatHistory();
 
         if (thinkingBubble) {
-            thinkingBubble.textContent = answer;
+            setRichText(thinkingBubble, answer);
         }
 
     } catch (error) {
@@ -771,7 +1045,7 @@ async function sendMessage() {
 
 
 /* ============================================================
-   5. Wiring
+   6. Wiring
    ============================================================ */
 
 function initChat() {

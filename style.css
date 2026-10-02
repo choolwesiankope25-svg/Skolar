@@ -136,7 +136,8 @@ body {
     margin-bottom: 14px;
     border-radius: 16px;
     line-height: 1.55;
-    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .message.bot {
@@ -203,6 +204,67 @@ body {
     border-left: 3px solid #b4543f;
 }
 
+/* ===== Rich text inside chat messages ===== */
+
+.message .chat-paragraph {
+    margin: 0 0 10px;
+}
+
+.message .chat-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+.message .chat-list {
+    margin: 6px 0 10px;
+    padding-left: 22px;
+}
+
+.message .chat-list:last-child {
+    margin-bottom: 0;
+}
+
+.message .chat-list .chat-list-item {
+    margin-bottom: 5px;
+}
+
+.message .chat-list .chat-list-item:last-child {
+    margin-bottom: 0;
+}
+
+.message strong {
+    font-weight: 700;
+}
+
+.message code {
+    background: #dfe5df;
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88em;
+}
+
+.message .chat-code-block {
+    background: #eef1ee;
+    border: 1px solid #dde2dd;
+    border-radius: 10px;
+    margin: 6px 0 10px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.5;
+}
+
+.message .chat-code-block:last-child {
+    margin-bottom: 0;
+}
+
+.message .chat-code-block code {
+    background: none;
+    border-radius: 0;
+    padding: 0;
+    font-size: 13px;
+}
+
 @media (max-width: 750px) {
     .feature-grid {
         grid-template-columns: 1fr;
@@ -219,6 +281,20 @@ body {
 
     .message {
         max-width: 88%;
+    }
+
+    .message .chat-list {
+        padding-left: 18px;
+    }
+
+    .message .chat-code-block {
+        padding: 10px 11px;
+        margin-left: -2px;
+        margin-right: -2px;
+    }
+
+    .message .chat-code-block code {
+        font-size: 12px;
     }
 
     .chat-input-area {
