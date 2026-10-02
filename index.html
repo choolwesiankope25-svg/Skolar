@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skolar</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <header class="topbar">
+        <div>
+            <h1>Skolar</h1>
+            <p>Your space to study, think, and grow.</p>
+        </div>
+    </header>
+
+    <main class="home">
+
+        <section class="welcome">
+            <p class="greeting">Welcome back 👋</p>
+            <h2>What do you want to work on today?</h2>
+            <p class="welcome-text">
+                Whether you need help studying, planning your day,
+                clearing your mind, or simply talking things through —
+                Skolar is here.
+            </p>
+        </section>
+
+        <section class="feature-grid">
+
+           <button class="feature-card" onclick="openStudy()">
+    <span class="feature-icon">📚</span>
+    <span class="feature-title">Study</span>
+    <span class="feature-description">Learn, revise and understand difficult topics</span>
+</button>
+
+            <button class="feature-card" onclick="openChat()">
+                <span class="feature-icon">🤖</span>
+                <span class="feature-title">Chat-bot</span>
+                <span class="feature-description">
+                    Talk to Skolar about whatever is on your mind.
+                </span>
+            </button>
+
+            <button class="feature-card">
+                <span class="feature-icon">✅</span>
+                <span class="feature-title">Tasks</span>
+                <span class="feature-description">
+                    Organise assignments, study sessions and goals.
+                </span>
+            </button>
+
+            <button class="feature-card">
+                <span class="feature-icon">🌿</span>
+                <span class="feature-title">Wellbeing</span>
+                <span class="feature-description">
+                    Explore stress, confidence, relationships and growth.
+                </span>
+            </button>
+
+            <button class="feature-card">
+                <span class="feature-icon">📖</span>
+                <span class="feature-title">Wisdom</span>
+                <span class="feature-description">
+                    Reflections, ideas, quotes and passages to think about.
+                </span>
+            </button>
+
+            <button class="feature-card">
+                <span class="feature-icon">📔</span>
+                <span class="feature-title">Journal</span>
+                <span class="feature-description">
+                    A private space to write your thoughts.
+                </span>
+            </button>
+
+        </section>
+
+        <section id="chatSection" class="chat-section">
+
+            <div class="section-heading">
+                <div>
+                    <span class="small-label">YOUR AI SUPPORT</span>
+                    <h2>Chat with Skolar 🤖</h2>
+                </div>
+            </div>
+
+            <div id="messages" class="messages">
+                <div class="message bot">
+                    Hey 👋 I'm Skolar. What are we working on today?
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <input
+                    type="text"
+                    id="userInput"
+                    placeholder="Ask Skolar something..."
+                    autocomplete="off"
+                >
+
+                <button onclick="sendMessage()">Send</button>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+
+    <script>
+        function openChat() {
+            document.getElementById("chatSection").scrollIntoView({
+                behavior: "smooth"
+            });
+
+            setTimeout(() => {
+                document.getElementById("userInput").focus();
+            }, 500);
+        }
+     function openStudy() {
+    document.body.innerHTML = `
+        <div class="study-page">
+            <button onclick="location.reload()">← Back</button>
+
+            <h1>📚 Your Study</h1>
+            <p>What are you studying today?</p>
+
+            <div class="study-options">
+                <div class="study-option">
+                    <span>📖</span>
+                    <h2>My Courses</h2>
+                    <p>View and organise your courses.</p>
+                <div class="study-option" onclick="openCourses()">
+
+                <div class="study-option">
+                    <span>📝</span>
+                    <h2>Topics & Revision</h2>
+                    <p>Review topics and keep track of what you've covered.</p>
+                </div>
+
+                <div class="study-option">
+                    <span>📅</span>
+                    <h2>Upcoming Assessments</h2>
+                    <p>Keep track of tests, assignments and exams.</p>
+                </div>
+
+                <div class="study-option">
+                    <span>⏱️</span>
+                    <h2>Study Sessions</h2>
+                    <p>Plan focused sessions for your studies.</p>
+                </div>
+
+                <div class="study-option">
+                    <span>📊</span>
+                    <h2>My Progress</h2>
+                    <p>See how you're progressing with your studies.</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+    
+function openCourses() {
+    document.body.innerHTML = `
+        <div class="study-page">
+            <button onclick="openStudy()">← Back</button>
+
+            <h1>📖 My Courses</h1>
+            <p>Your courses, all in one place.</p>
+
+            <div class="course-list">
+                <div class="course-card">
+                    <h2>No courses yet</h2>
+                    <p>Add your first course to start organising your studies.</p>
+                    <button type="button" onclick="window.addCourse()">＋ Add Course</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function addCourse() {
+    aler("Add Course clicked!")
+    const courseName = prompt("Enter your course name:");
+
+    if (!courseName || !courseName.trim()) {
+        return;
+    }
+
+    const courseCode = prompt("Enter the course code (optional):");
+
+    const courseList = document.querySelector(".course-list");
+
+    courseList.innerHTML = `
+        <div class="course-card">
+            <h2>${courseName.trim()}</h2>
+            <p>${courseCode ? courseCode.trim() : "Course code not added"}</p>
+        </div>
+    `;
+}
+window.addcourse = addcourse;
+</script>
+
+</ body>
+</html>
