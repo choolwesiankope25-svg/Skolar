@@ -452,21 +452,43 @@ body {
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.07);
 }
 
+/* Cards are real <button> elements for keyboard access. This resets only the
+   browser defaults that would otherwise change their appearance - the existing
+   card styles below still control everything visual. */
+.study-option,
+.assessment-card,
+.session-card,
+.timetable-entry,
+.course-card-open {
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    width: 100%;
+    cursor: pointer;
+}
+
 .study-option-icon {
     display: block;
     font-size: 28px;
     margin-bottom: 16px;
 }
 
-.study-option h2 {
+/* These replaced <h2>/<p>, which carried browser-default margins (the page has
+   no global heading/paragraph reset). The values below reproduce those defaults
+   exactly so the cards render identically to before the semantic conversion. */
+.study-option-title {
+    display: block;
     font-size: 18px;
-    margin-bottom: 8px;
+    font-weight: bold;
+    margin: 0.83em 0 8px;
 }
 
-.study-option p {
+.study-option-desc {
+    display: block;
     color: #6b746d;
     font-size: 14px;
     line-height: 1.5;
+    margin: 1em 0;
 }
 
 /* ===== My Courses ===== */
@@ -505,16 +527,37 @@ body {
     padding: 24px;
 }
 
-.course-card h2 {
+/* Delete inside a card is a secondary, compact action - the detail pages
+   keep the larger full-width delete-button treatment. */
+.course-card .delete-button,
+.topic-card .delete-button {
+    width: auto;
+    margin-top: 10px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+    border-radius: 999px;
+    color: #7c4034;
+}
+
+.course-card .delete-button:hover,
+.topic-card .delete-button:hover {
+    background: #fbf0ee;
+}
+
+.course-card-title {
+    display: block;
     font-size: 18px;
-    margin-bottom: 8px;
+    font-weight: bold;
+    margin: 0.83em 0 8px;
     overflow-wrap: anywhere;
 }
 
-.course-card p {
+.course-card-sub {
+    display: block;
     color: #6b746d;
     font-size: 14px;
     line-height: 1.5;
+    margin: 1em 0;
     overflow-wrap: anywhere;
 }
 
@@ -528,6 +571,7 @@ body {
 /* ===== Progress indicators ===== */
 
 .course-progress {
+    display: block;
     margin-top: 18px;
 }
 
@@ -541,6 +585,7 @@ body {
 }
 
 .progress-track {
+    display: block;
     height: 8px;
     border-radius: 999px;
     background: #e6eae5;
@@ -548,6 +593,7 @@ body {
 }
 
 .progress-fill {
+    display: block;
     height: 100%;
     border-radius: 999px;
     background: #4d7c5f;
@@ -555,13 +601,15 @@ body {
 }
 
 .course-topics-hint {
-    margin-top: 14px;
+    display: block;
+    margin: 14px 0 1em;
     font-size: 13px;
     font-weight: bold;
     color: #4d7c5f;
 }
 
-.course-card.clickable {
+.course-card.clickable,
+.course-card-open {
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
@@ -1632,6 +1680,172 @@ body {
     }
 }
 
+/* ===== Notifications and reminders ===== */
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.notification-badge {
+    display: inline-block;
+    margin-top: 10px;
+    min-width: 22px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #b4552f;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.notification-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: -20px 0 24px;
+}
+
+.notification-summary {
+    flex: 1;
+    min-width: 140px;
+    color: #657067;
+    font-size: 14px;
+}
+
+.notification-toolbar .add-course-button,
+.notification-toolbar .delete-button {
+    margin: 0;
+}
+
+.notification-toolbar .delete-button {
+    border: 1px solid #d5dbd5;
+    background: #ffffff;
+    color: #354239;
+}
+
+.notification-toolbar .delete-button:hover {
+    background: #eef1ec;
+    border-color: #78877c;
+}
+
+.notification-list {
+    display: grid;
+    gap: 14px;
+}
+
+.notification-card {
+    border: 1px solid #dfe4df;
+    border-left: 5px solid #4d7c5f;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 18px 22px;
+}
+
+.notification-card.unread {
+    border-left-color: #b4552f;
+    background: #fffdfb;
+}
+
+.notification-card.read {
+    background: #fafbf9;
+}
+
+.notification-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.notification-type {
+    font-size: 13px;
+    color: #4a544c;
+    overflow-wrap: anywhere;
+}
+
+.notification-when {
+    font-size: 13px;
+    color: #657067;
+    overflow-wrap: anywhere;
+}
+
+.notification-title {
+    font-size: 17px;
+    margin: 10px 0 6px;
+    overflow-wrap: anywhere;
+}
+
+.notification-message {
+    color: #4a544c;
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.notification-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.notification-button {
+    border: 1px solid #d5dbd5;
+    background: #ffffff;
+    color: #354239;
+    border-radius: 12px;
+    padding: 11px 16px;
+    min-height: 44px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.notification-button:hover {
+    background: #eef1ec;
+    border-color: #78877c;
+}
+
+.notification-button:focus-visible {
+    outline: 2px solid #2c4a38;
+    outline-offset: 2px;
+}
+
+.notification-button.dismiss {
+    color: #6b503f;
+}
+
+.notification-empty.empty-state {
+    border: 1px dashed #dfe4df;
+    border-radius: 16px;
+    background: #fafbf9;
+    text-align: center;
+    padding: 40px 24px;
+}
+
+.notification-empty h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.notification-empty p {
+    color: #6b746d;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
 @media (max-width: 750px) {
     .study-options,
     .course-list {
@@ -1658,6 +1872,11 @@ body {
 
     .topic-status-select {
         width: 100%;
+    }
+
+    .course-card .delete-button,
+    .topic-card .delete-button {
+        width: auto;
     }
 
     .assessment-card {
@@ -1802,5 +2021,36 @@ body {
     .planner-actions .add-course-button,
     .plan-actions .add-course-button {
         width: 100%;
+    }
+
+    .notification-toolbar {
+        margin-top: 0;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .notification-toolbar .add-course-button,
+    .notification-toolbar .delete-button,
+    .notification-button {
+        width: 100%;
+    }
+
+    .notification-card {
+        padding: 16px;
+    }
+
+    .notification-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .notification-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .notification-empty.empty-state {
+        padding: 30px 18px;
     }
 }

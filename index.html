@@ -136,6 +136,12 @@
             }, 500);
         }
         function openStudy() {
+            /* Refreshed here so the hub badge and the notification centre always
+               reflect the current Study data. Generation is idempotent. */
+            refreshNotifications();
+
+            const unreadNotifications = unreadNotificationCount();
+
             document.body.innerHTML = `
                 <div class="study-page">
                     <button class="back-button" onclick="location.reload()">← Back</button>
@@ -146,53 +152,54 @@
                     </div>
 
                     <div class="study-options">
-                        <div class="study-option clickable" onclick="openToday()">
+                        <button type="button" class="study-option clickable" onclick="openToday()">
                             <span class="study-option-icon">📌</span>
-                            <h2>Today</h2>
-                            <p>Your study day at a glance — what to focus on now.</p>
-                        </div>
+                            <span class="study-option-title">Today</span>
+                            <span class="study-option-desc">Your study day at a glance — what to focus on now.</span>
+                        </button>
 
-                        <div class="study-option clickable" onclick="openCourses()">
+                        <button type="button" class="study-option clickable" onclick="openCourses()">
                             <span class="study-option-icon">📖</span>
-                            <h2>My Courses</h2>
-                            <p>View and organise your courses.</p>
-                        </div>
+                            <span class="study-option-title">My Courses</span>
+                            <span class="study-option-desc">View and organise your courses.</span>
+                        </button>
 
-                        <div class="study-option">
+                        <button type="button" class="study-option clickable" onclick="openRevision()">
                             <span class="study-option-icon">📝</span>
-                            <h2>Topics &amp; Revision</h2>
-                            <p>Review topics and keep track of what you've covered.</p>
-                        </div>
+                            <span class="study-option-title">Topics &amp; Revision</span>
+                            <span class="study-option-desc">Review topics and keep track of what you've covered.</span>
+                        </button>
 
-                        <div class="study-option clickable" onclick="openAssessments()">
+                        <button type="button" class="study-option clickable" onclick="openAssessments()">
                             <span class="study-option-icon">📅</span>
-                            <h2>Upcoming Assessments</h2>
-                            <p>Keep track of tests, assignments and exams.</p>
-                        </div>
+                            <span class="study-option-title">Upcoming Assessments</span>
+                            <span class="study-option-desc">Keep track of tests, assignments and exams.</span>
+                        </button>
 
-                        <div class="study-option clickable" onclick="openSessions()">
-                            <span class="study-option-icon">⏱️</span>
-                            <h2>Study Sessions</h2>
-                            <p>Plan focused sessions for your studies.</p>
-                        </div>
-
-                        <div class="study-option clickable" onclick="openProgress()">
+                        <button type="button" class="study-option clickable" onclick="openProgress()">
                             <span class="study-option-icon">📊</span>
-                            <h2>My Progress</h2>
-                            <p>See how you're progressing with your studies.</p>
-                        </div>
+                            <span class="study-option-title">My Progress</span>
+                            <span class="study-option-desc">See how you're progressing with your studies.</span>
+                        </button>
 
-                        <div class="study-option clickable" onclick="openPlanner()">
+                        <button type="button" class="study-option clickable" onclick="openPlanner()">
                             <span class="study-option-icon">🗓️</span>
-                            <h2>Study Planner</h2>
-                            <p>Turn an upcoming assessment into a study plan.</p>
-                        </div>
+                            <span class="study-option-title">Study Planner</span>
+                            <span class="study-option-desc">Plan study sessions and turn an assessment into a study plan.</span>
+                        </button>
 
-                        <div class="study-option clickable" onclick="openTimetable()">
+                        <button type="button" class="study-option clickable" onclick="openTimetable()">
                             <span class="study-option-icon">📅</span>
-                            <h2>Timetable</h2>
-                            <p>Your weekly classes, Monday to Sunday.</p>
-                        </div>
+                            <span class="study-option-title">Timetable</span>
+                            <span class="study-option-desc">Your weekly classes, Monday to Sunday.</span>
+                        </button>
+
+                        <button type="button" class="study-option clickable" onclick="openNotifications()">
+                            <span class="study-option-icon">🔔</span>
+                            <span class="study-option-title">Reminders</span>
+                            <span class="study-option-desc">Assessment deadlines and planned sessions, in one calm list.</span>
+                            ${unreadNotifications ? `<span class="notification-badge"><span aria-hidden="true">${unreadNotifications > 99 ? "99+" : unreadNotifications}</span><span class="visually-hidden"> unread ${unreadNotifications === 1 ? "reminder" : "reminders"}</span></span>` : ""}
+                        </button>
                     </div>
                 </div>
             `;
@@ -210,6 +217,7 @@
         const PROGRESS_SOON_DAYS = 7;
         const ATTENTION_LIMIT = 8;
         const TIMETABLE_KEY = "skolar.timetable";
+        const NOTIFICATIONS_KEY = "skolar.notifications";
 
         const TIMETABLE_DAYS = [
             "Monday",
@@ -347,19 +355,22 @@
             const percent = total ? Math.round((completed / total) * 100) : 0;
 
             return `
-                <div class="course-card clickable" onclick="openTopics('${escapeHTML(course.id)}')">
-                    <h2>${escapeHTML(course.name)}</h2>
-                    <p>${course.code ? escapeHTML(course.code) : "Course code not added"}</p>
-                    <div class="course-progress">
-                        <div class="progress-label">
-                            <span>Progress</span>
-                            <span>${total ? completed + " of " + total + " topics completed" : "No topics yet"}</span>
-                        </div>
-                        <div class="progress-track">
-                            <div class="progress-fill" style="width: ${percent}%"></div>
-                        </div>
-                    </div>
-                    <p class="course-topics-hint">📝 Topics &amp; Revision →</p>
+                <div class="course-card">
+                    <button type="button" class="course-card-open" onclick="openTopics('${escapeHTML(course.id)}')">
+                        <span class="course-card-title">${escapeHTML(course.name)}</span>
+                        <span class="course-card-sub">${course.code ? escapeHTML(course.code) : "Course code not added"}</span>
+                        <span class="course-progress">
+                            <span class="progress-label">
+                                <span>Progress</span>
+                                <span>${total ? completed + " of " + total + " topics completed" : "No topics yet"}</span>
+                            </span>
+                            <span class="progress-track">
+                                <span class="progress-fill" style="width: ${percent}%"></span>
+                            </span>
+                        </span>
+                        <span class="course-topics-hint">📝 Topics &amp; Revision →</span>
+                    </button>
+                    <button type="button" class="delete-button" onclick="deleteCourse('${escapeHTML(course.id)}')">Delete course</button>
                 </div>
             `;
         }
@@ -428,6 +439,7 @@
                 <div class="topic-card ${statusClass(status)}">
                     <div class="topic-main">
                         <h2>${escapeHTML(topic.name)}</h2>
+                        <button type="button" class="delete-button" onclick="deleteTopic('${escapeHTML(courseId)}', '${escapeHTML(topic.id)}')">Delete topic</button>
                     </div>
                     <select
                         class="topic-status-select ${statusClass(status)}"
@@ -439,11 +451,66 @@
             `;
         }
 
+        /* Topics & Revision has its own landing view: every course with its
+           topic progress, so the Study hub card never has to open Courses.
+           Opening a course drills into openTopics(courseId). */
+        function openRevision() {
+            const courses = loadCourses();
+
+            const listHTML = courses.length
+                ? courses.map(course => {
+                    const topics = loadTopicsFor(course.id);
+                    const completed = completedTopicCount(topics);
+                    const needsRevision = topics.filter(topic => topic.status === "Needs Revision").length;
+                    const percent = topics.length ? Math.round((completed / topics.length) * 100) : 0;
+
+                    return `
+                        <div class="course-card">
+                            <button type="button" class="course-card-open" onclick="openTopics('${escapeHTML(course.id)}')">
+                                <span class="course-card-title">${escapeHTML(course.name)}</span>
+                                <span class="course-card-sub">${course.code ? escapeHTML(course.code) : "Course code not added"}</span>
+                                <span class="course-progress">
+                                    <span class="progress-label">
+                                        <span>Progress</span>
+                                        <span>${topics.length ? completed + " of " + topics.length + " topics completed" : "No topics yet"}</span>
+                                    </span>
+                                    <span class="progress-track">
+                                        <span class="progress-fill" style="width: ${percent}%"></span>
+                                    </span>
+                                </span>
+                                <span class="course-topics-hint">${needsRevision ? "🔁 " + needsRevision + " to revise · " : ""}Open topics →</span>
+                            </button>
+                        </div>
+                    `;
+                }).join("")
+                : `
+                    <div class="course-card empty-state">
+                        <h2>No courses added yet</h2>
+                        <p>Topics live inside a course. Add one in My Courses and your revision list will fill in right here.</p>
+                    </div>
+                `;
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📝 Topics &amp; Revision</h1>
+                        <p>Every topic across every course, and what still needs revision.</p>
+                    </div>
+
+                    <div class="course-list">
+                        ${listHTML}
+                    </div>
+                </div>
+            `;
+        }
+
         function openTopics(courseId) {
             const course = loadCourses().find(c => c.id === courseId);
 
             if (!course) {
-                openCourses();
+                openRevision();
                 return;
             }
 
@@ -557,6 +624,21 @@
 
         function getCourseById(courseId) {
             return loadCourses().find(course => course.id === courseId);
+        }
+
+        /* A timetable class or a study session can be created before the student
+           has any courses, so those records keep their own name in `label`.
+           Records linked to a course always show the course name. */
+        function courseOrLabelName(record) {
+            const course = getCourseById(record && record.courseId);
+
+            if (course) {
+                return course.name;
+            }
+
+            const label = record && typeof record.label === "string" ? record.label.trim() : "";
+
+            return label || "Unknown course";
         }
 
         function assessmentTimestamp(assessment) {
@@ -706,18 +788,17 @@
             const countdown = countdownFor(assessment);
             const courseName = course ? course.name : "Unknown course";
 
-            return `
-                <div class="assessment-card clickable ${countdown.overdue ? "overdue" : ""}" onclick="openAssessment('${escapeHTML(assessment.id)}')">
-                    <div class="assessment-main">
-                        <span class="assessment-name">${escapeHTML(assessment.name)}</span>
-                        <span class="assessment-meta">${escapeHTML(courseName)}${course && course.code ? " · " + escapeHTML(course.code) : ""}</span>
-                    </div>
-                    <div class="assessment-side">
-                        <span class="type-badge">${escapeHTML(assessment.type)}</span>
-                        <span class="assessment-when">${escapeHTML(formatAssessmentDate(assessment))}${assessment.time ? " · " + escapeHTML(formatAssessmentTime(assessment)) : ""}</span>
-                        ${countdownPillHTML(countdown)}
-                    </div>
-                </div>
+            return `<button type="button" class="assessment-card clickable ${countdown.overdue ? "overdue" : ""}" onclick="openAssessment('${escapeHTML(assessment.id)}')">
+                      <span class="assessment-main">
+                          <span class="assessment-name">${escapeHTML(assessment.name)}</span>
+                          <span class="assessment-meta">${escapeHTML(courseName)}${course && course.code ? " · " + escapeHTML(course.code) : ""}</span>
+                      </span>
+                      <span class="assessment-side">
+                          <span class="type-badge">${escapeHTML(assessment.type)}</span>
+                          <span class="assessment-when">${escapeHTML(formatAssessmentDate(assessment))}${assessment.time ? " · " + escapeHTML(formatAssessmentTime(assessment)) : ""}</span>
+                          ${countdownPillHTML(countdown)}
+                      </span>
+                  </button>
             `;
         }
 
@@ -754,9 +835,8 @@
             if (!loadCourses().length) {
                 return `
                     <div class="assessment-card empty-state">
-                        <h2>No courses yet</h2>
-                        <p>Add a course in My Courses first — every assessment is linked to one of your courses.</p>
-                        <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                        <h2>No courses added yet</h2>
+                        <p>Every assessment belongs to a course. Add one in My Courses and your tests, assignments and exams will appear right here.</p>
                     </div>
                 `;
             }
@@ -973,6 +1053,7 @@
             }
 
             saveAssessments(assessments);
+            refreshNotifications();
 
             openAssessments();
         }
@@ -1057,8 +1138,117 @@
             assessments.splice(index, 1);
 
             saveAssessments(assessments);
+            refreshNotifications();
 
             openAssessments(courseId);
+        }
+
+        /* Counts everything that would be removed with a course, so the
+           confirmation can state it plainly instead of cascading silently. */
+        function courseDependents(courseId) {
+            const topics = loadTopicsFor(courseId);
+            const assessments = loadAssessments().filter(item => item.courseId === courseId);
+            const sessions = loadSessions().filter(item => item.courseId === courseId);
+            const timetable = loadTimetable().filter(item => item.courseId === courseId);
+
+            return { topics, assessments, sessions, timetable };
+        }
+
+        function describeDependents(deps) {
+            const parts = [];
+
+            if (deps.topics.length) {
+                parts.push(deps.topics.length + (deps.topics.length === 1 ? " topic" : " topics"));
+            }
+
+            if (deps.assessments.length) {
+                parts.push(deps.assessments.length + (deps.assessments.length === 1 ? " assessment" : " assessments"));
+            }
+
+            if (deps.sessions.length) {
+                parts.push(deps.sessions.length + (deps.sessions.length === 1 ? " study session" : " study sessions"));
+            }
+
+            if (deps.timetable.length) {
+                parts.push(deps.timetable.length + (deps.timetable.length === 1 ? " timetable class" : " timetable classes"));
+            }
+
+            return parts.join(", ");
+        }
+
+        /* Deleting a course removes its topics and everything that points at
+           it, so no assessment, session or timetable entry is left referring
+           to a course that no longer exists. Other courses are untouched. */
+        function deleteCourse(courseId) {
+            const courses = loadCourses();
+            const index = courses.findIndex(item => item.id === courseId);
+
+            if (index === -1) {
+                openCourses();
+                return;
+            }
+
+            const course = courses[index];
+            const deps = courseDependents(courseId);
+            const summary = describeDependents(deps);
+
+            const warning = summary
+                ? ` This will also permanently delete its ${summary}. Nothing else is affected.`
+                : "";
+
+            if (!confirm(`Delete "${course.name}"?${warning} This cannot be undone.`)) {
+                return;
+            }
+
+            courses.splice(index, 1);
+            saveCourses(courses);
+
+            const allTopics = loadTopics();
+
+            delete allTopics[courseId];
+            localStorage.setItem(TOPICS_KEY, JSON.stringify(allTopics));
+
+            saveAssessments(loadAssessments().filter(item => item.courseId !== courseId));
+            saveSessions(loadSessions().filter(item => item.courseId !== courseId));
+            saveTimetable(loadTimetable().filter(item => item.courseId !== courseId));
+            refreshNotifications();
+
+            openCourses();
+        }
+
+        /* Deleting a topic also removes the study sessions that point at it,
+           so no session is left referring to a topic that no longer exists. */
+        function deleteTopic(courseId, topicId) {
+            const topics = loadTopicsFor(courseId);
+            const index = topics.findIndex(item => item.id === topicId);
+
+            if (index === -1) {
+                openTopics(courseId);
+                return;
+            }
+
+            const topic = topics[index];
+            const affectedSessions = loadSessions().filter(item => item.topicId === topicId);
+            const sessionWarning = affectedSessions.length
+                ? ` This will also delete ${affectedSessions.length} study session${affectedSessions.length === 1 ? "" : "s"} linked to this topic.`
+                : "";
+
+            if (!confirm(`Delete topic "${topic.name}"?${sessionWarning} This cannot be undone.`)) {
+                return;
+            }
+
+            topics.splice(index, 1);
+            saveTopicsFor(courseId, topics);
+
+            if (affectedSessions.length) {
+                const removed = new Set(affectedSessions.map(item => item.id));
+
+                saveSessions(loadSessions().filter(item => !removed.has(item.id)));
+            }
+
+            refreshNotifications();
+
+            openTopics(courseId);
         }
 
         function loadSessions() {
@@ -1283,22 +1473,20 @@
         }
 
         function sessionCardHTML(session) {
-            const course = getCourseById(session.courseId);
-            const courseName = course ? course.name : "Unknown course";
+            const courseName = courseOrLabelName(session);
 
-            return `
-                <div class="session-card clickable" onclick="openSession('${escapeHTML(session.id)}')">
-                    <div class="session-main">
-                        <span class="session-course">${escapeHTML(courseName)}</span>
-                        <span class="session-topic">${escapeHTML(sessionTopicName(session))}</span>
-                    </div>
+            return `<button type="button" class="session-card clickable" onclick="openSession('${escapeHTML(session.id)}')">
+                      <span class="session-main">
+                          <span class="session-course">${escapeHTML(courseName)}</span>
+                          <span class="session-topic">${escapeHTML(sessionTopicName(session))}</span>
+                      </span>
 
-                    <div class="session-side">
-                        <span class="session-status ${sessionStatusClass(session.status)}">${escapeHTML(session.status)}</span>
-                        <span class="session-when">${escapeHTML(formatSessionDate(session))} · ${escapeHTML(formatSessionTimeRange(session))}</span>
-                        <span class="session-duration">${escapeHTML(formatDuration(sessionDurationMinutes(session)))}</span>
-                    </div>
-                </div>
+                      <span class="session-side">
+                          <span class="session-status ${sessionStatusClass(session.status)}">${escapeHTML(session.status)}</span>
+                          <span class="session-when">${escapeHTML(formatSessionDate(session))} · ${escapeHTML(formatSessionTimeRange(session))}</span>
+                          <span class="session-duration">${escapeHTML(formatDuration(sessionDurationMinutes(session)))}</span>
+                      </span>
+                  </button>
             `;
         }
 
@@ -1316,16 +1504,6 @@
         }
 
         function emptySessionsHTML() {
-            if (!loadCourses().length) {
-                return `
-                    <div class="session-card empty-state">
-                        <h2>No courses yet</h2>
-                        <p>Add a course in My Courses first — every study session is linked to one of your courses.</p>
-                        <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
-                    </div>
-                `;
-            }
-
             return `
                 <div class="session-card empty-state">
                     <h2>No study sessions yet</h2>
@@ -1377,11 +1555,6 @@
         function openSessionForm(sessionId) {
             const courses = loadCourses();
 
-            if (!courses.length) {
-                openSessions();
-                return;
-            }
-
             const existing = sessionId
                 ? loadSessions().find(item => item.id === sessionId)
                 : null;
@@ -1390,7 +1563,9 @@
                 ? `openSession('${escapeHTML(existing.id)}')`
                 : "openSessions()";
 
-            const courseId = existing ? existing.courseId : courses[0].id;
+            const courseId = existing
+                ? (existing.courseId || "")
+                : (courses.length ? courses[0].id : "");
 
             const courseOptionsHTML = courses.map(course => `
                 <option value="${escapeHTML(course.id)}" ${course.id === courseId ? "selected" : ""}>
@@ -1420,7 +1595,12 @@
                     <div class="assessment-form">
                         <label class="form-field">
                             <span class="form-label">Course</span>
-                            <select id="session-course" onchange="updateSessionTopicOptions()">${courseOptionsHTML}</select>
+                            <select id="session-course" onchange="updateSessionTopicOptions()">${courseOptionsHTML}<option value="" ${courseId ? "" : "selected"}>Other / no course</option></select>
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Subject (only if you picked "Other")</span>
+                            <input type="text" id="session-label" value="${existing ? escapeHTML(existing.label || "") : ""}" placeholder="e.g. Chemistry revision">
                         </label>
 
                         <label class="form-field">
@@ -1481,6 +1661,7 @@
             const durationSelect = document.getElementById("session-duration");
             const statusSelect = document.getElementById("session-status");
             const notesInput = document.getElementById("session-notes");
+            const labelInput = document.getElementById("session-label");
             const errorBox = document.getElementById("session-error");
 
             const showError = message => {
@@ -1497,13 +1678,14 @@
             const duration = Number(durationSelect.value);
             const status = statusSelect.value;
             const notes = notesInput.value.trim();
+            const label = labelInput ? labelInput.value.trim() : "";
 
-            if (!course) {
-                showError("Please choose one of your saved courses.");
+            if (!course && !label) {
+                showError("Please choose one of your saved courses, or type a subject.");
                 return;
             }
 
-            if (topicId && !loadTopicsFor(course.id).some(topic => topic.id === topicId)) {
+            if (course && topicId && !loadTopicsFor(course.id).some(topic => topic.id === topicId)) {
                 showError("Please choose a topic that belongs to the selected course.");
                 return;
             }
@@ -1539,7 +1721,8 @@
             }
 
             if (existing) {
-                existing.courseId = course.id;
+                existing.courseId = course ? course.id : "";
+                existing.label = label;
                 existing.topicId = topicId;
                 existing.date = date;
                 existing.startTime = startTime;
@@ -1549,7 +1732,8 @@
             } else {
                 sessions.push({
                     id: makeId("session"),
-                    courseId: course.id,
+                    courseId: course ? course.id : "",
+                    label: label,
                     topicId: topicId,
                     date: date,
                     startTime: startTime,
@@ -1560,6 +1744,7 @@
             }
 
             saveSessions(sessions);
+            refreshNotifications();
 
             openSessions();
         }
@@ -1580,6 +1765,7 @@
             session.status = status;
 
             saveSessions(sessions);
+            refreshNotifications();
 
             openSession(sessionId);
         }
@@ -1602,6 +1788,7 @@
             sessions.splice(index, 1);
 
             saveSessions(sessions);
+            refreshNotifications();
 
             openSessions(courseId);
         }
@@ -1615,7 +1802,7 @@
             }
 
             const course = getCourseById(session.courseId);
-            const courseName = course ? course.name : "Unknown course";
+            const courseName = courseOrLabelName(session);
             const status = SESSION_STATUSES.includes(session.status)
                 ? session.status
                 : "Planned";
@@ -1696,9 +1883,12 @@
         }
 
         function sessionStats(courseId) {
+            /* When counting across all courses, skip sessions whose course has
+               been deleted. Otherwise Progress can report "No courses yet"
+               alongside a non-zero session count for the same empty account. */
             const sessions = courseId
                 ? loadSessions().filter(item => item.courseId === courseId)
-                : loadSessions();
+                : loadSessions().filter(item => !!getCourseById(item.courseId));
 
             return {
                 total: sessions.length,
@@ -1718,9 +1908,11 @@
         }
 
         function assessmentStats(courseId) {
+            /* Same rule as sessionStats: assessments pointing at a deleted
+               course are not counted in the overall totals. */
             const assessments = courseId
                 ? loadAssessments().filter(item => item.courseId === courseId)
-                : loadAssessments();
+                : loadAssessments().filter(item => !!getCourseById(item.courseId));
 
             return {
                 total: assessments.length,
@@ -1914,9 +2106,8 @@
                 ? courses.map(progressCourseCardHTML).join("")
                 : `
                     <div class="progress-course-card empty-state">
-                        <h2>No courses yet</h2>
-                        <p>Add a course in My Courses to start tracking your progress.</p>
-                        <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                        <h2>No courses added yet</h2>
+                        <p>Progress is calculated from your courses, topics and sessions. Add a course in My Courses and this fills in automatically.</p>
                     </div>
                 `;
 
@@ -1975,20 +2166,23 @@
             return course ? course.name : "Unknown course";
         }
 
-        function plannerEmptyHTML(title, message, actionLabel, actionCall) {
+        function plannerEmptyHTML(title, message, actionLabel, actionCall, secondaryLabel, secondaryCall) {
             return `
                 <div class="study-page">
                     <button class="back-button" onclick="openStudy()">← Back</button>
 
                     <div class="study-heading">
                         <h1>🗓️ Study Planner</h1>
-                        <p>Turn an upcoming assessment into a study plan.</p>
+                        <p>Plan focused study time — automatically from an assessment, or one session at a time.</p>
                     </div>
 
                     <div class="planner-card empty-state">
                         <h2>${escapeHTML(title)}</h2>
                         <p>${escapeHTML(message)}</p>
                         <button type="button" class="add-course-button" onclick="${actionCall}">${escapeHTML(actionLabel)}</button>
+                        ${secondaryLabel
+                            ? `<button type="button" class="back-button inline" onclick="${secondaryCall}">${escapeHTML(secondaryLabel)}</button>`
+                            : ""}
                     </div>
                 </div>
             `;
@@ -2009,6 +2203,7 @@
 
             sessions.push(session);
             saveSessions(sessions);
+            refreshNotifications();
 
             return session;
         }
@@ -2109,9 +2304,8 @@
                         </div>
 
                         <div class="today-card empty-state">
-                            <h2>No courses yet</h2>
-                            <p>Add a course in My Courses first — your day is built from your courses, topics and sessions.</p>
-                            <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
+                            <h2>No courses added yet</h2>
+                            <p>Your day is built from your courses, topics and sessions. Add a course in My Courses and this fills in automatically.</p>
                         </div>
                     </div>
                 `;
@@ -2364,6 +2558,18 @@
                 return;
             }
 
+            /* One topic per study slot. Every generated session uses the same
+               start time, so more topics than dates would put several topics
+               into an identical date + time slot. */
+            if (topics.length > plannerState.dates.length) {
+                plannerShowError(
+                    "You selected " + topics.length + " topics but only have " +
+                    plannerState.dates.length + (plannerState.dates.length === 1 ? " study date" : " study dates") +
+                    ". Each topic needs its own session slot - add more study dates, or select fewer topics."
+                );
+                return;
+            }
+
             if (!plannerDatesBeforeAssessment(assessment, plannerState.dates, plannerState.startTime)) {
                 plannerShowError("Every session must start before the assessment.");
                 return;
@@ -2395,6 +2601,28 @@
             }
 
             const proposal = plannerState.proposal;
+            const sessions = loadSessions();
+            const alreadyPlanned = proposal.filter(item => sessions.some(session =>
+                session.courseId === item.courseId &&
+                session.topicId === item.topicId &&
+                session.date === item.date &&
+                session.startTime === plannerState.startTime &&
+                session.duration === plannerState.duration
+            ));
+
+            /* Confirmation is idempotent: a plan that is already on the
+               calendar is never written twice, and nothing is created when
+               any part of it already exists. */
+            if (alreadyPlanned.length) {
+                plannerShowError(
+                    alreadyPlanned.length === proposal.length
+                        ? "This study plan has already been created - these sessions are already on your schedule."
+                        : alreadyPlanned.length + " of the " + proposal.length +
+                          " sessions in this plan already exist, so nothing was created. Cancel and adjust the dates, topics or start time first."
+                );
+
+                return;
+            }
 
             proposal.forEach(item => {
                 createPlannedSession({
@@ -2457,10 +2685,10 @@
 
             if (!courses.length) {
                 document.body.innerHTML = plannerEmptyHTML(
-                    "No courses yet",
-                    "Add a course in My Courses first — a study plan is built around one of your courses and its topics.",
-                    "Go to My Courses",
-                    "openCourses()"
+                    "No courses added yet",
+                    "An automatic plan is built from a course and its topics. Meanwhile you can already create study sessions here — pick a subject, date, time and what you want to get through.",
+                    "Add a study session",
+                    "openSessionForm()"
                 );
                 return;
             }
@@ -2482,7 +2710,9 @@
             if (!upcoming.length) {
                 document.body.innerHTML = plannerEmptyHTML(
                     "No upcoming assessments",
-                    "A study plan is built from an upcoming assessment. Add one and come back here.",
+                    "An automatic plan is built from an upcoming assessment, so add one when you're ready. You can also just create a study session on your own — subject, date, time and what you want to get through.",
+                    "Add a study session",
+                    "openSessionForm()",
                     "Go to Upcoming Assessments",
                     "openAssessments()"
                 );
@@ -2605,6 +2835,10 @@
                         <p>Pick an assessment, choose your topics and dates, and Skolar will spread the work out for you.</p>
                     </div>
 
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="openSessions()">View all study sessions</button>
+                    </div>
+
                     <div class="planner-card">
                         <h2 class="step-title">1 · Which assessment?</h2>
                         <select id="planner-assessment" onchange="selectPlannerAssessment()">${assessmentOptions}</select>
@@ -2652,15 +2886,14 @@
 
         function timetableEntryHTML(entry) {
             const course = getCourseById(entry.courseId);
-            const courseName = course ? course.name : "Unknown course";
+            const courseName = courseOrLabelName(entry);
             const courseCode = course && course.code ? " · " + course.code : "";
 
-            return `
-                <div class="timetable-entry clickable" onclick="openTimetableEntry('${escapeHTML(entry.id)}')">
-                    <span class="timetable-time">${escapeHTML(entry.startTime)} – ${escapeHTML(entry.endTime)}</span>
-                    <span class="timetable-course">${escapeHTML(courseName)}${escapeHTML(courseCode)}</span>
-                    ${entry.room ? `<span class="timetable-meta">📍 ${escapeHTML(entry.room)}</span>` : ""}
-                </div>
+            return `<button type="button" class="timetable-entry clickable" onclick="openTimetableEntry('${escapeHTML(entry.id)}')">
+                      <span class="timetable-time">${escapeHTML(entry.startTime)} – ${escapeHTML(entry.endTime)}</span>
+                      <span class="timetable-course">${escapeHTML(courseName)}${escapeHTML(courseCode)}</span>
+                      ${entry.room ? `<span class="timetable-meta">📍 ${escapeHTML(entry.room)}</span>` : ""}
+                  </button>
             `;
         }
 
@@ -2680,27 +2913,6 @@
 
         function openTimetable() {
             const courses = loadCourses();
-
-            if (!courses.length) {
-                document.body.innerHTML = `
-                    <div class="study-page">
-                        <button class="back-button" onclick="openStudy()">← Back</button>
-
-                        <div class="study-heading">
-                            <h1>📅 Timetable</h1>
-                            <p>Your weekly classes, Monday to Sunday.</p>
-                        </div>
-
-                        <div class="planner-card empty-state">
-                            <h2>No courses yet</h2>
-                            <p>Add a course in My Courses first — every class is linked to one of your courses.</p>
-                            <button type="button" class="add-course-button" onclick="openCourses()">Go to My Courses</button>
-                        </div>
-                    </div>
-                `;
-                return;
-            }
-
             const entries = loadTimetable();
             const subtitle = entries.length
                 ? entries.length + " class" + (entries.length === 1 ? "" : "es") + " this week"
@@ -2718,6 +2930,10 @@
                     <div class="course-actions">
                         <button type="button" class="add-course-button" onclick="openTimetableForm()">＋ Add Class</button>
                     </div>
+
+                    ${courses.length
+                        ? ""
+                        : '<p class="planner-hint">No courses saved yet — that\'s fine. When you add a class you can just type its name, and link it to a course later.</p>'}
 
                     ${entries.length
                         ? ""
@@ -2737,11 +2953,6 @@
 
         function openTimetableForm(entryId) {
             const courses = loadCourses();
-
-            if (!courses.length) {
-                openTimetable();
-                return;
-            }
 
             const existing = entryId
                 ? loadTimetable().find(item => item.id === entryId)
@@ -2773,7 +2984,12 @@
                     <div class="assessment-form">
                         <label class="form-field">
                             <span class="form-label">Course</span>
-                            <select id="timetable-course">${courseOptionsHTML}</select>
+                            <select id="timetable-course">${courseOptionsHTML}<option value="" ${courses.length || (existing && existing.courseId) ? "" : "selected"}>Other / no course</option></select>
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Class name (only if you picked "Other")</span>
+                            <input type="text" id="timetable-label" value="${existing ? escapeHTML(existing.label || "") : ""}" placeholder="e.g. Biology Lab">
                         </label>
 
                         <label class="form-field">
@@ -2826,6 +3042,7 @@
             const endInput = document.getElementById("timetable-end");
             const roomInput = document.getElementById("timetable-room");
             const notesInput = document.getElementById("timetable-notes");
+            const labelInput = document.getElementById("timetable-label");
             const errorBox = document.getElementById("timetable-error");
 
             const showError = message => {
@@ -2841,9 +3058,10 @@
             const endTime = endInput.value;
             const room = roomInput.value.trim();
             const notes = notesInput.value.trim();
+            const label = labelInput ? labelInput.value.trim() : "";
 
-            if (!course) {
-                showError("Please choose one of your saved courses.");
+            if (!course && !label) {
+                showError("Please choose one of your saved courses, or type a class name.");
                 return;
             }
 
@@ -2878,7 +3096,8 @@
             }
 
             if (existing) {
-                existing.courseId = course.id;
+                existing.courseId = course ? course.id : "";
+                existing.label = label;
                 existing.day = day;
                 existing.startTime = startTime;
                 existing.endTime = endTime;
@@ -2887,7 +3106,8 @@
             } else {
                 entries.push({
                     id: makeId("class"),
-                    courseId: course.id,
+                    courseId: course ? course.id : "",
+                    label: label,
                     day: day,
                     startTime: startTime,
                     endTime: endTime,
@@ -2910,7 +3130,7 @@
             }
 
             const course = getCourseById(entry.courseId);
-            const courseName = course ? course.name : "Unknown course";
+            const courseName = courseOrLabelName(entry);
 
             document.body.innerHTML = `
                 <div class="study-page">
@@ -2974,6 +3194,576 @@
             saveTimetable(entries);
 
             openTimetable();
+        }
+
+
+        /* ===== Notifications and reminders =====
+
+           Reminders are derived from the Study records that already exist.
+           Nothing in this section writes to skolar.courses, skolar.topics,
+           skolar.assessments, skolar.sessions or skolar.timetable - it only
+           reads them, so the same generation logic can later be handed to
+           native Android notifications without being rewritten.
+
+           Every generated reminder has a deterministic id built from its type,
+           its source record and the reminder timing (assessment:<id>:3d), so
+           generating once, twice, ten times or after a refresh always produces
+           exactly the same set. Nothing here uses random ids. */
+
+        const NOTIFICATION_TYPES = ["assessment", "session", "motivation"];
+
+        const NOTIFICATION_TYPE_LABELS = {
+            assessment: "Assessment reminder",
+            session: "Study session",
+            motivation: "Motivation"
+        };
+
+        /* An assessment further away than this is not worth a reminder yet, so
+           a full term of exams does not flood the list. */
+        const NOTIFICATION_WINDOW_DAYS = 7;
+
+        /* Dismissed reminders are kept as short-lived tombstones so that a
+           dismissed id is never generated again, but the list cannot grow
+           without bound. */
+        const NOTIFICATION_TOMBSTONE_LIMIT = 50;
+
+        /* Original, unattributed encouragement. These are not quotations and
+           are not attributed to anyone. */
+        const MOTIVATION_MESSAGES = [
+            "Small progress is still progress.",
+            "One focused hour can change the direction of your day.",
+            "You don't have to finish everything today. Just start.",
+            "Consistency beats intensity.",
+            "Your future self benefits from what you do today.",
+            "Revising a little each day beats cramming the night before.",
+            "Done is better than perfect - finish the small task first.",
+            "Asking for help early is a study skill, not a weakness."
+        ];
+
+        function loadNotifications() {
+            try {
+                const raw = localStorage.getItem(NOTIFICATIONS_KEY);
+
+                if (!raw) {
+                    return [];
+                }
+
+                const parsed = JSON.parse(raw);
+
+                if (!Array.isArray(parsed)) {
+                    return [];
+                }
+
+                return parsed
+                    .filter(item => item && typeof item === "object" && typeof item.id === "string" && item.id)
+                    .map(item => ({
+                        id: item.id,
+                        type: NOTIFICATION_TYPES.includes(item.type) ? item.type : "motivation",
+                        title: typeof item.title === "string" ? item.title : "",
+                        message: typeof item.message === "string" ? item.message : "",
+                        date: typeof item.date === "string" ? item.date : "",
+                        relatedId: typeof item.relatedId === "string" ? item.relatedId : "",
+                        createdAt: typeof item.createdAt === "number" ? item.createdAt : 0,
+                        read: item.read === true,
+                        dismissed: item.dismissed === true
+                    }));
+            } catch (error) {
+                console.error(error);
+
+                return [];
+            }
+        }
+
+        function saveNotifications(notifications) {
+            localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
+        }
+
+        function localDayKey(timestamp) {
+            const date = new Date(timestamp);
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+
+            return date.getFullYear() + "-" + month + "-" + day;
+        }
+
+        /* Days are counted between local calendar days, the same way Skolar
+           treats dates elsewhere. Rounding absorbs daylight-saving shifts. */
+        function calendarDaysUntil(timestamp) {
+            const target = new Date(timestamp);
+            const targetStart = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+
+            return Math.round((targetStart - startOfToday()) / 86400000);
+        }
+
+        function hasUsableId(record) {
+            return !!record && typeof record.id === "string" && !!record.id;
+        }
+
+        /* One reminder per assessment at a time: the reminder that matches how
+           close the assessment actually is. Moving from 7d to 3d to 1d to today
+           replaces the reminder rather than stacking new copies, and past or
+           undated assessments produce nothing. */
+        function assessmentReminderFor(assessment) {
+            if (!hasUsableId(assessment)) {
+                return null;
+            }
+
+            const timestamp = assessmentTimestamp(assessment);
+
+            if (isNaN(timestamp) || timestamp < Date.now()) {
+                return null;
+            }
+
+            const daysUntil = calendarDaysUntil(timestamp);
+            const time = assessment.time ? formatAssessmentTime(assessment) : "";
+            const name = assessment.name || "Untitled assessment";
+
+            let band = "";
+
+            if (daysUntil <= 0) {
+                band = "today";
+            } else if (daysUntil <= 1) {
+                band = "1d";
+            } else if (daysUntil <= 3) {
+                band = "3d";
+            } else if (daysUntil <= NOTIFICATION_WINDOW_DAYS) {
+                band = "7d";
+            } else {
+                return null;
+            }
+
+            let title = "Upcoming assessment";
+            let message = "";
+
+            if (band === "today") {
+                message = time
+                    ? name + " is today at " + time + "."
+                    : name + " is today.";
+            } else if (band === "1d") {
+                message = time
+                    ? name + " is tomorrow at " + time + "."
+                    : name + " is tomorrow.";
+            } else if (band === "3d") {
+                message = name + " is in 3 days. Time to plan your revision.";
+            } else {
+                message = name + " is in a week. Time to plan your revision.";
+            }
+
+            return {
+                id: "assessment:" + assessment.id + ":" + band,
+                type: "assessment",
+                title: title,
+                message: message,
+                date: (assessment.date || "") + (assessment.time ? "T" + assessment.time : ""),
+                relatedId: assessment.id
+            };
+        }
+
+        /* Only Planned sessions that have not finished yet. A session is
+           either today's session or an upcoming one - never both. */
+        function sessionReminderFor(session) {
+            if (!hasUsableId(session) || session.status !== "Planned") {
+                return null;
+            }
+
+            const timestamp = sessionTimestamp(session);
+
+            if (isNaN(timestamp) || timestamp < Date.now()) {
+                return null;
+            }
+
+            const courseName = courseOrLabelName(session);
+            const topic = sessionTopicName(session);
+            const today = sessionIsToday(session);
+
+            /* duration 0 makes the existing formatter return just the start
+               time, so the reminder and the session read the same way. */
+            const start = formatSessionTimeRange({
+                date: session.date,
+                startTime: session.startTime,
+                duration: 0
+            });
+
+            return {
+                id: "session:" + session.id + ":" + (today ? "today" : "upcoming"),
+                type: "session",
+                title: today ? "Study session today" : "Planned study session",
+                message: today
+                    ? "Your " + courseName + " " + topic + " session starts at " + start + " today."
+                    : "Your " + courseName + " " + topic + " session is on " + formatSessionDate(session) + " at " + start + ".",
+                date: (session.date || "") + (session.startTime ? "T" + session.startTime : ""),
+                relatedId: session.id
+            };
+        }
+
+        /* At most one per calendar day, and only once the student has something
+           to study, so a brand-new Skolar opens with the honest empty state
+           rather than a reminder about nothing. The message is chosen from the
+           day of the year, so it is stable for that whole day and never
+           re-rolls on refresh. */
+        function motivationReminder() {
+            const now = Date.now();
+            const dayKey = localDayKey(now);
+            const startOfYear = new Date(new Date(now).getFullYear(), 0, 1).getTime();
+            const dayOfYear = Math.round((startOfToday() - startOfYear) / 86400000);
+            const index = ((dayOfYear % MOTIVATION_MESSAGES.length) + MOTIVATION_MESSAGES.length) % MOTIVATION_MESSAGES.length;
+
+            return {
+                id: "motivation:" + dayKey,
+                type: "motivation",
+                title: "A little encouragement",
+                message: MOTIVATION_MESSAGES[index],
+                date: dayKey,
+                relatedId: ""
+            };
+        }
+
+        function desiredNotifications() {
+            const desired = [];
+
+            if (!loadCourses().length) {
+                return desired;
+            }
+
+            loadAssessments().forEach(assessment => {
+                const reminder = assessmentReminderFor(assessment);
+
+                if (reminder) {
+                    desired.push(reminder);
+                }
+            });
+
+            loadSessions().forEach(session => {
+                const reminder = sessionReminderFor(session);
+
+                if (reminder) {
+                    desired.push(reminder);
+                }
+            });
+
+            if (loadCourses().length) {
+                desired.push(motivationReminder());
+            }
+
+            return desired;
+        }
+
+        /* Idempotent generation. Existing read and dismissed state is carried
+           over, and an active reminder that is no longer wanted is dropped -
+           which is how deleting an assessment, or completing a session, removes
+           its reminders without touching the Study records themselves.
+           Dismissed reminders are kept only as tombstones so the same id can
+           never come back. */
+        function refreshNotifications() {
+            const now = Date.now();
+            const existing = loadNotifications();
+            const previous = new Map(existing.map(item => [item.id, item]));
+            const kept = [];
+            const tombstones = [];
+            const wanted = new Set();
+
+            desiredNotifications().forEach(reminder => {
+                wanted.add(reminder.id);
+
+                const before = previous.get(reminder.id);
+
+                /* A reminder the student dismissed stays dismissed: the id is
+                   deterministic, so regenerating it must never resurrect it. */
+                if (before && before.dismissed) {
+                    tombstones.push(before);
+                    return;
+                }
+
+                kept.push({
+                    id: reminder.id,
+                    type: reminder.type,
+                    title: reminder.title,
+                    message: reminder.message,
+                    date: reminder.date,
+                    relatedId: reminder.relatedId,
+                    createdAt: before ? before.createdAt : now,
+                    read: before ? before.read : false,
+                    dismissed: false
+                });
+            });
+
+            existing
+                .filter(item => !wanted.has(item.id) && item.dismissed)
+                .forEach(item => tombstones.push(item));
+
+            tombstones
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .slice(0, NOTIFICATION_TOMBSTONE_LIMIT)
+                .forEach(item => kept.push(item));
+
+            saveNotifications(kept);
+
+            return kept;
+        }
+
+        function sortNotifications(notifications) {
+            return [...notifications].sort((a, b) => {
+                if (a.read !== b.read) {
+                    return a.read ? 1 : -1;
+                }
+
+                if (a.date !== b.date) {
+                    return a.date < b.date ? -1 : 1;
+                }
+
+                if (a.createdAt !== b.createdAt) {
+                    return a.createdAt - b.createdAt;
+                }
+
+                return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+            });
+        }
+
+        function activeNotifications() {
+            return sortNotifications(loadNotifications().filter(item => !item.dismissed));
+        }
+
+        function unreadNotificationCount() {
+            return loadNotifications().filter(item => !item.dismissed && !item.read).length;
+        }
+
+        function updateNotification(notificationId, changes) {
+            const notifications = loadNotifications();
+            const index = notifications.findIndex(item => item.id === notificationId);
+
+            if (index === -1) {
+                return;
+            }
+
+            notifications[index] = Object.assign({}, notifications[index], changes);
+
+            saveNotifications(notifications);
+        }
+
+        function markNotificationRead(notificationId) {
+            updateNotification(notificationId, { read: true });
+
+            openNotifications();
+        }
+
+        function markAllNotificationsRead() {
+            saveNotifications(
+                loadNotifications().map(item =>
+                    item.dismissed ? item : Object.assign({}, item, { read: true })
+                )
+            );
+
+            openNotifications();
+        }
+
+        function dismissNotification(notificationId) {
+            updateNotification(notificationId, { read: true, dismissed: true });
+
+            openNotifications();
+        }
+
+        function clearAllNotifications() {
+            if (!confirm("Clear all notifications? New reminders will appear as your assessments and sessions change.")) {
+                return;
+            }
+
+            saveNotifications(
+                loadNotifications().map(item =>
+                    item.dismissed ? item : Object.assign({}, item, { read: true, dismissed: true })
+                )
+            );
+
+            openNotifications();
+        }
+
+        /* Notification content is built with createElement and textContent, so
+           course, topic and assessment names can never become markup. Long
+           names are handled by CSS rather than by truncating the data. */
+        function notificationElement(tag, className, text) {
+            const node = document.createElement(tag);
+
+            if (className) {
+                node.className = className;
+            }
+
+            if (typeof text === "string") {
+                node.textContent = text;
+            }
+
+            return node;
+        }
+
+        function notificationButton(label, ariaLabel, onClick, className) {
+            const button = document.createElement("button");
+
+            button.type = "button";
+            button.className = className || "notification-button";
+            button.textContent = label;
+
+            if (ariaLabel) {
+                button.setAttribute("aria-label", ariaLabel);
+            }
+
+            button.addEventListener("click", onClick);
+
+            return button;
+        }
+
+        function notificationWhen(notification) {
+            if (notification.type === "motivation") {
+                return "Today";
+            }
+
+            const parts = String(notification.date || "").split("T");
+            const day = parts[0] || "";
+            const time = parts[1] || "";
+
+            if (!day) {
+                return "";
+            }
+
+            if (notification.type === "session") {
+                return formatSessionDate({ date: day, startTime: time }) + (time ? " · " + time : "");
+            }
+
+            return formatAssessmentDate({ date: day, time: time }) + (time ? " · " + formatAssessmentTime({ date: day, time: time }) : "");
+        }
+
+        function notificationCard(notification) {
+            const card = notificationElement("article", "notification-card" + (notification.read ? " read" : " unread"));
+
+            const head = notificationElement("div", "notification-head");
+            const type = notificationElement(
+                "span",
+                "notification-type",
+                (notification.type === "assessment" ? "🔔 " : notification.type === "session" ? "📚 " : "💡 ") +
+                    (NOTIFICATION_TYPE_LABELS[notification.type] || "Reminder")
+            );
+
+            head.appendChild(type);
+
+            const when = notificationWhen(notification);
+
+            if (when) {
+                head.appendChild(notificationElement("span", "notification-when", when));
+            }
+
+            card.appendChild(head);
+            card.appendChild(notificationElement("h2", "notification-title", notification.title || "Reminder"));
+            card.appendChild(notificationElement("p", "notification-message", notification.message));
+
+            const actions = notificationElement("div", "notification-actions");
+
+            if (!notification.read) {
+                actions.appendChild(
+                    notificationButton(
+                        "Mark as read",
+                        "Mark reminder as read: " + (notification.title || "Reminder"),
+                        () => markNotificationRead(notification.id),
+                        "notification-button"
+                    )
+                );
+            }
+
+            actions.appendChild(
+                notificationButton(
+                    "Dismiss",
+                    "Dismiss reminder: " + (notification.title || "Reminder"),
+                    () => dismissNotification(notification.id),
+                    "notification-button dismiss"
+                )
+            );
+
+            card.appendChild(actions);
+
+            return card;
+        }
+
+        function notificationEmptyState() {
+            const empty = notificationElement("div", "notification-empty empty-state");
+
+            empty.appendChild(notificationElement("h2", "", "You're all caught up"));
+            empty.appendChild(
+                notificationElement(
+                    "p",
+                    "",
+                    "No reminders right now. Skolar will let you know when an assessment gets close or a study session is planned."
+                )
+            );
+
+            return empty;
+        }
+
+        function openNotifications() {
+            refreshNotifications();
+
+            const notifications = activeNotifications();
+            const unread = notifications.filter(item => !item.read).length;
+
+            const page = notificationElement("div", "study-page");
+
+            const back = notificationButton("← Back", "Back to Your Study", () => openStudy(), "back-button");
+
+            page.appendChild(back);
+
+            const heading = notificationElement("div", "study-heading");
+
+            heading.appendChild(notificationElement("h1", "", "🔔 Reminders"));
+            heading.appendChild(
+                notificationElement("p", "", "Assessment deadlines, planned sessions and a little encouragement.")
+            );
+
+            page.appendChild(heading);
+
+            const toolbar = notificationElement("div", "notification-toolbar");
+
+            toolbar.appendChild(
+                notificationElement(
+                    "span",
+                    "notification-summary",
+                    unread
+                        ? unread + (unread === 1 ? " unread reminder" : " unread reminders")
+                        : notifications.length
+                            ? "No unread reminders"
+                            : "No reminders"
+                )
+            );
+
+            if (unread) {
+                toolbar.appendChild(
+                    notificationButton(
+                        "Mark all as read",
+                        "Mark every unread reminder as read",
+                        () => markAllNotificationsRead(),
+                        "add-course-button"
+                    )
+                );
+            }
+
+            if (notifications.length) {
+                toolbar.appendChild(
+                    notificationButton(
+                        "Clear all",
+                        "Clear all notifications",
+                        () => clearAllNotifications(),
+                        "delete-button"
+                    )
+                );
+            }
+
+            page.appendChild(toolbar);
+
+            if (notifications.length) {
+                const list = notificationElement("div", "notification-list");
+
+                notifications.forEach(item => list.appendChild(notificationCard(item)));
+
+                page.appendChild(list);
+            } else {
+                page.appendChild(notificationEmptyState());
+            }
+
+            document.body.replaceChildren(page);
         }
 </script>
 
