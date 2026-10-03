@@ -66,10 +66,19 @@ let chatMessages = [];
 let chatIsSending = false;
 let chatSendTimestamps = [];
 
+const CHAT_STARTERS = [
+    "What should I revise today?",
+    "What's coming up this week?",
+    "Explain a topic I'm stuck on",
+    "I'm stressed about my exams"
+];
+
 let chatDomReady = false;
 let chatInputEl = null;
 let chatMessagesEl = null;
 let chatSendButtonEl = null;
+let chatStartersEl = null;
+let chatNewChatEl = null;
 
 
 /* ============================================================
@@ -791,6 +800,8 @@ function chatDom() {
     chatSendButtonEl = chatMessagesEl
         ? chatMessagesEl.parentElement.querySelector(".chat-input-area button")
         : null;
+    chatStartersEl = document.getElementById("chatStarters");
+    chatNewChatEl = document.getElementById("newChatButton");
 
     chatDomReady = !!(chatMessagesEl && chatInputEl);
 
@@ -832,12 +843,80 @@ function renderChat() {
 
     if (!chatMessages.length) {
         appendChatBubble("bot", CHAT_GREETING);
+        renderChatStarters();
 
         return;
     }
 
+    renderChatStarters();
+
     for (const message of chatMessages) {
         appendChatBubble(message.role, message.content);
+    }
+}
+
+/* Starters are a "here's where to begin" hint, so they exist only while the
+   conversation is empty. They are rebuilt from scratch on every call, which
+   makes repeated renders (and repeated New chat presses) idempotent rather
+   than appending duplicates. */
+function renderChatStarters() {
+    if (!chatStartersEl) {
+        return;
+    }
+
+    chatStartersEl.textContent = "";
+
+    /* A real conversation - or a send already under way - means the student
+       no longer needs the shortcuts. */
+    if (chatMessages.length || chatIsSending) {
+        chatStartersEl.hidden = true;
+
+        return;
+    }
+
+    chatStartersEl.hidden = false;
+
+    for (const starter of CHAT_STARTERS) {
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.className = "chat-starter";
+        button.textContent = starter;
+        button.addEventListener("click", () => startChatFromStarter(starter));
+
+        chatStartersEl.appendChild(button);
+    }
+}
+
+/* Starters reuse the normal send path: the text goes through the input box
+   so validation, rate limiting, Study context, history persistence, safety
+   handling and rich-text rendering all behave exactly as they do for typed
+   messages. */
+function startChatFromStarter(text) {
+    if (chatIsSending || !chatDom()) {
+        return;
+    }
+
+    chatInputEl.value = text;
+
+    sendMessage();
+}
+
+/* New chat never touches Study data - it clears the conversation key only.
+   While a reply is in flight the control is disabled, because the pending
+   request would otherwise write its reply back into the fresh conversation. */
+function handleNewChat() {
+    if (chatIsSending) {
+        return;
+    }
+
+    /* renderChat() re-adds the greeting and the starters for the now-empty
+       conversation, so there is nothing else to rebuild here. */
+    clearChatHistory();
+    clearChatInput();
+
+    if (chatInputEl) {
+        chatInputEl.focus();
     }
 }
 
@@ -850,6 +929,12 @@ function setChatSending(sending) {
     if (chatInputEl) {
         chatInputEl.disabled = sending;
     }
+
+    if (chatNewChatEl) {
+        chatNewChatEl.disabled = sending;
+    }
+
+    renderChatStarters();
 }
 
 /* Shows an error state. If the pending "thinking" bubble is still on screen it
@@ -1061,6 +1146,14 @@ function initChat() {
 
     if (chatInputEl && !chatInputEl.getAttribute("enterkeyhint")) {
         chatInputEl.setAttribute("enterkeyhint", "send");
+    }
+
+    if (chatNewChatEl && !chatNewChatEl.getAttribute("aria-label")) {
+        chatNewChatEl.setAttribute("aria-label", "Start a new chat");
+    }
+
+    if (chatNewChatEl) {
+        chatNewChatEl.addEventListener("click", handleNewChat);
     }
 
     chatInputEl.addEventListener("keydown", event => {

@@ -85,6 +85,13 @@
                     <span class="small-label">YOUR AI SUPPORT</span>
                     <h2>Chat with Skolar 🤖</h2>
                 </div>
+
+                <button
+                    type="button"
+                    id="newChatButton"
+                    class="chat-new-button"
+                    aria-label="Start a new chat and clear this conversation"
+                >New chat</button>
             </div>
 
             <div id="messages" class="messages">
@@ -92,6 +99,14 @@
                     Hey 👋 I'm Skolar. What are we working on today?
                 </div>
             </div>
+
+            <div
+                id="chatStarters"
+                class="chat-starters"
+                role="group"
+                aria-label="Conversation starters"
+                hidden
+            ></div>
 
             <div class="chat-input-area">
                 <input
