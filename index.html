@@ -354,11 +354,21 @@
             const total = topics.length;
             const percent = total ? Math.round((completed / total) * 100) : 0;
 
+            const meta = [];
+
+            if (course.code) {
+                meta.push(escapeHTML(course.code));
+            }
+
+            if (course.lecturer) {
+                meta.push(escapeHTML(course.lecturer));
+            }
+
             return `
                 <div class="course-card">
-                    <button type="button" class="course-card-open" onclick="openTopics('${escapeHTML(course.id)}')">
+                    <button type="button" class="course-card-open" onclick="openCourse('${escapeHTML(course.id)}')">
                         <span class="course-card-title">${escapeHTML(course.name)}</span>
-                        <span class="course-card-sub">${course.code ? escapeHTML(course.code) : "Course code not added"}</span>
+                        <span class="course-card-sub">${meta.length ? meta.join(" · ") : "No course code or lecturer yet"}</span>
                         <span class="course-progress">
                             <span class="progress-label">
                                 <span>Progress</span>
@@ -368,8 +378,9 @@
                                 <span class="progress-fill" style="width: ${percent}%"></span>
                             </span>
                         </span>
-                        <span class="course-topics-hint">📝 Topics &amp; Revision →</span>
+                        <span class="course-topics-hint">📚 Course details &amp; topics →</span>
                     </button>
+                    <button type="button" class="edit-course-button" onclick="openCourseForm('${escapeHTML(course.id)}')">Edit course</button>
                     <button type="button" class="delete-button" onclick="deleteCourse('${escapeHTML(course.id)}')">Delete course</button>
                 </div>
             `;
@@ -383,7 +394,8 @@
                 : `
                     <div class="course-card empty-state">
                         <h2>No courses yet</h2>
-                        <p>Add your first course to start organising your studies.</p>
+                        <p>Add your first course to start organising your studies. Everything else in Study builds on top of it.</p>
+                        <button type="button" class="add-course-button" onclick="openCourseForm('')">＋ Add your first course</button>
                     </div>
                 `;
 
@@ -397,7 +409,7 @@
                     </div>
 
                     <div class="course-actions">
-                        <button type="button" class="add-course-button" onclick="addCourse()">＋ Add Course</button>
+                        <button type="button" class="add-course-button" onclick="openCourseForm('')">＋ Add Course</button>
                     </div>
 
                     <div class="course-list">
@@ -407,25 +419,204 @@
             `;
         }
 
-        function addCourse() {
-            const courseName = prompt("Enter your course name:");
+        /* One form serves both adding and editing, matching the pattern used by
+           assessments and study sessions. Only the name is required. */
+        function openCourseForm(courseId) {
+            const existing = courseId
+                ? loadCourses().find(item => item.id === courseId)
+                : null;
 
-            if (!courseName || !courseName.trim()) {
+            if (courseId && !existing) {
+                openCourses();
                 return;
             }
 
-            const courseCode = prompt("Enter the course code (optional):");
+            const backTarget = existing
+                ? `openCourse('${escapeHTML(existing.id)}')`
+                : "openCourses()";
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="${backTarget}">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>${existing ? "✏️ Edit Course" : "➕ Add Course"}</h1>
+                        <p>${existing ? "Update the details below." : "Only the course name is required."}</p>
+                    </div>
+
+                    <div class="assessment-form">
+                        <label class="form-field">
+                            <span class="form-label">Course name</span>
+                            <input type="text" id="course-name" value="${existing ? escapeHTML(existing.name) : ""}" placeholder="e.g. Organic Chemistry">
+                        </label>
+
+                        <div class="form-row">
+                            <label class="form-field">
+                                <span class="form-label">Course code (optional)</span>
+                                <input type="text" id="course-code" value="${existing ? escapeHTML(existing.code || "") : ""}" placeholder="e.g. CHEM201">
+                            </label>
+
+                            <label class="form-field">
+                                <span class="form-label">Lecturer name (optional)</span>
+                                <input type="text" id="course-lecturer" value="${existing ? escapeHTML(existing.lecturer || "") : ""}" placeholder="e.g. Dr Mensah">
+                            </label>
+                        </div>
+
+                        <p id="course-error" class="form-error"></p>
+
+                        <div class="form-actions">
+                            <button
+                                type="button"
+                                class="add-course-button"
+                                onclick="saveCourse('${existing ? escapeHTML(existing.id) : ""}')"
+                            >${existing ? "Save Changes" : "Add Course"}</button>
+
+                            <button type="button" class="back-button inline" onclick="${backTarget}">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /* Saving writes straight to localStorage and re-renders the course list,
+           so the new or updated course appears without a page refresh. */
+        function saveCourse(courseId) {
+            const nameInput = document.getElementById("course-name");
+            const codeInput = document.getElementById("course-code");
+            const lecturerInput = document.getElementById("course-lecturer");
+            const errorBox = document.getElementById("course-error");
+
+            const showError = message => {
+                if (errorBox) {
+                    errorBox.className = "form-error visible";
+                    errorBox.textContent = message;
+                }
+            };
+
+            const name = nameInput ? nameInput.value.trim() : "";
+            const code = codeInput ? codeInput.value.trim() : "";
+            const lecturer = lecturerInput ? lecturerInput.value.trim() : "";
+
+            if (!name) {
+                showError("Please enter a course name.");
+                return;
+            }
 
             const courses = loadCourses();
 
-            courses.push({
-                name: courseName.trim(),
-                code: courseCode ? courseCode.trim() : ""
-            });
+            if (courseId) {
+                const course = courses.find(item => item.id === courseId);
+
+                if (!course) {
+                    openCourses();
+                    return;
+                }
+
+                course.name = name;
+                course.code = code;
+                course.lecturer = lecturer;
+            } else {
+                courses.push({
+                    id: makeId("course"),
+                    name: name,
+                    code: code,
+                    lecturer: lecturer
+                });
+            }
 
             saveCourses(courses);
 
+            refreshNotifications();
+
             openCourses();
+        }
+
+        /* A course opens its own detail page: the saved details, then the topics
+           that belong to it, then a route into the full Topics & Revision view. */
+        function openCourse(courseId) {
+            const course = loadCourses().find(item => item.id === courseId);
+
+            if (!course) {
+                openCourses();
+                return;
+            }
+
+            const topics = loadTopicsFor(course.id);
+            const completed = completedTopicCount(topics);
+            const percent = topics.length ? Math.round((completed / topics.length) * 100) : 0;
+
+            const topicsHTML = topics.length
+                ? topics.map(topic => {
+                    const status = TOPIC_STATUSES.includes(topic.status) ? topic.status : "Not Started";
+
+                    return `
+                        <div class="topic-card">
+                            <div class="topic-main">
+                                <h2>${escapeHTML(topic.name)}</h2>
+                            </div>
+                            <span class="type-badge">${escapeHTML(status)}</span>
+                        </div>
+                    `;
+                }).join("")
+                : `
+                    <div class="topic-card empty-state">
+                        <h2>No topics yet</h2>
+                        <p>Add topics to start tracking your revision for this course.</p>
+                    </div>
+                `;
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openCourses()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📚 ${escapeHTML(course.name)}</h1>
+                        <p>${escapeHTML(course.code || "Course details and topics")}</p>
+                    </div>
+
+                    <div class="detail-card">
+                        <div class="detail-row">
+                            <span class="detail-label">Course name</span>
+                            <span class="detail-value">${escapeHTML(course.name)}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Course code</span>
+                            <span class="detail-value">${course.code ? escapeHTML(course.code) : "Not added"}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Lecturer</span>
+                            <span class="detail-value">${course.lecturer ? escapeHTML(course.lecturer) : "Not added"}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Topics</span>
+                            <span class="detail-value">${topics.length ? completed + " of " + topics.length + " completed" : "No topics yet"}</span>
+                        </div>
+
+                        <div class="detail-row">
+                            <span class="detail-label">Progress</span>
+                            <span class="detail-value">${percent}%</span>
+                        </div>
+                    </div>
+
+                    <div class="detail-actions course-detail-actions">
+                        <button type="button" class="add-course-button" onclick="openCourseForm('${escapeHTML(course.id)}')">Edit course</button>
+                        <button type="button" class="delete-button" onclick="deleteCourse('${escapeHTML(course.id)}')">Delete course</button>
+                    </div>
+
+                    <h2 class="list-heading">Topics in this course</h2>
+
+                    <div class="course-actions">
+                        <button type="button" class="add-course-button" onclick="openTopics('${escapeHTML(course.id)}')">Manage topics →</button>
+                    </div>
+
+                    <div class="topic-list">
+                        ${topicsHTML}
+                    </div>
+                </div>
+            `;
         }
 
         function topicCardHTML(courseId, topic) {

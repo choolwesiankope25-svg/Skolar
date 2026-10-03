@@ -529,6 +529,25 @@ body {
 
 /* Delete inside a card is a secondary, compact action - the detail pages
    keep the larger full-width delete-button treatment. */
+/* Edit inside a card matches the compact delete pill but keeps a neutral
+   colour, so a non-destructive action never looks like a destructive one. */
+.course-card .edit-course-button {
+    width: auto;
+    margin-top: 10px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+    border-radius: 999px;
+    border: 1px solid #d5dbd5;
+    background: #ffffff;
+    color: #354239;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.course-card .edit-course-button:hover {
+    background: #eef1ec;
+}
+
 .course-card .delete-button,
 .topic-card .delete-button {
     width: auto;
@@ -894,6 +913,13 @@ body {
 .detail-actions {
     display: flex;
     gap: 12px;
+}
+
+/* Only the course detail page has content below its action row, so only it
+   needs the separating gap. The other detail pages end on their actions and
+   must keep their original spacing. */
+.course-detail-actions {
+    margin-bottom: 24px;
 }
 
 .delete-button {
@@ -1879,6 +1905,10 @@ body {
         width: auto;
     }
 
+    .course-card .edit-course-button {
+        width: auto;
+    }
+
     .assessment-card {
         flex-direction: column;
         align-items: flex-start;
@@ -1919,6 +1949,7 @@ body {
     }
 
     .form-actions .add-course-button,
+    .detail-actions .add-course-button,
     .delete-button {
         width: 100%;
     }
