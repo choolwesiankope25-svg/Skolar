@@ -700,6 +700,16 @@ function rateLimitWaitMs(payload, headers) {
 async function callGroq(messages, options) {
     const settings = options || {};
 
+    /* Never print the key. Only whether one loaded, and its length, so a
+       missing or truncated secret is obvious in the terminal on first boot. */
+    if (!settings.quiet) {
+        console.log(
+            groqKeyLoaded()
+                ? "[ai] Groq key loaded (length " + process.env.GROQ_API_KEY.length + ", value not printed)"
+                : "[ai] WARNING: GROQ_API_KEY is not set. Create a .env file next to server.mjs containing GROQ_API_KEY=your_key_here, then restart the server."
+        );
+    }
+
     for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt++) {
         const body = {
             model: settings.model || GROQ_MODEL,
@@ -741,7 +751,51 @@ async function callGroq(messages, options) {
 const RATE_LIMIT_MESSAGE =
     "Skolar is answering a lot of questions at once. Wait about 15 seconds, then try again.";
 
+function groqKeyLoaded() {
+    return typeof process.env.GROQ_API_KEY === "string" && process.env.GROQ_API_KEY.trim().length > 0;
+}
+
+/* Startup banner. Without a key every request fails with 401, so say so once,
+   up front, rather than letting it surface later as a vague chat error. */
+function reportProviderConfig() {
+    if (groqKeyLoaded()) {
+        console.log("[ai] provider: Groq, model " + GROQ_MODEL + ", key loaded from the environment (length " + process.env.GROQ_API_KEY.length + ", value not printed).");
+        return;
+    }
+
+    console.log("[ai] WARNING: no Groq API key is loaded, so every AI request will fail.");
+    console.log("[ai] Fix: create a file named .env in this folder (next to server.mjs) containing:");
+    console.log("[ai]   GROQ_API_KEY=your_groq_key_here");
+    console.log("[ai] Get a key from https://console.groq.com/keys , then restart the server.");
+}
+
+/* Logs the provider's own status and error type/code so the real cause is
+   visible. Deliberately never logs the key or any request/response body. */
+function logProviderFailure(result) {
+    const upstream = result.payload && result.payload.error ? result.payload.error : {};
+    const type = typeof upstream.type === "string" ? upstream.type : "";
+    const code = typeof upstream.code === "string" ? upstream.code : "";
+
+    if (result.status === 401 || code === "invalid_api_key") {
+        console.log("[ai] Groq rejected the API key (HTTP 401). Check that GROQ_API_KEY in your .env file is correct, complete, and not expired.");
+        return;
+    }
+
+    if (result.status === 404 || code === "model_not_found") {
+        console.log("[ai] Groq does not recognise the model '" + GROQ_MODEL + "' (HTTP 404). Check the model name for this account.");
+        return;
+    }
+
+    console.log(
+        "[ai] Groq request failed. status=" + result.status +
+        (type ? " type=" + type : "") +
+        (code ? " code=" + code : "")
+    );
+}
+
 function providerFailure(result) {
+    logProviderFailure(result);
+
     return {
         status: result.rateLimited ? 429 : result.status,
         body: {
@@ -974,4 +1028,5 @@ app.post("/revision", async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Skolar is running at http://localhost:${PORT}`);
+    reportProviderConfig();
 });
