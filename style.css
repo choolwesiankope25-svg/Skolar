@@ -587,6 +587,96 @@ body {
     padding: 40px 24px;
 }
 
+/* ===== AI Revision Generator ===== */
+
+.revision-topics {
+    display: grid;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid #d5dbd5;
+    border-radius: 12px;
+}
+
+.revision-topic {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fafbf9;
+    cursor: pointer;
+}
+
+.revision-topic:hover {
+    background: #eef1ec;
+}
+
+.revision-topic input {
+    width: auto;
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.revision-topic-name {
+    flex: 1;
+    font-size: 15px;
+    color: #202522;
+}
+
+.revision-topic-status {
+    font-size: 12px;
+    color: #78827a;
+    flex-shrink: 0;
+}
+
+.revision-results {
+    display: grid;
+    gap: 16px;
+    max-width: 760px;
+}
+
+.revision-card {
+    border: 1px solid #dfe4df;
+    border-left: 5px solid #4d7c5f;
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 20px 24px;
+}
+
+.revision-question {
+    font-size: 17px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.revision-tag {
+    display: inline-block;
+    background: #eef1ec;
+    border: 1px solid #d5dbd5;
+    color: #354239;
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+.revision-answer {
+    color: #4a544c;
+    line-height: 1.6;
+}
+
+.revision-raw {
+    border: 1px solid #dfe4df;
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 20px 24px;
+    line-height: 1.6;
+}
+
 /* ===== Progress indicators ===== */
 
 .course-progress {
@@ -1952,6 +2042,14 @@ body {
     .detail-actions .add-course-button,
     .delete-button {
         width: 100%;
+    }
+
+    .revision-topic {
+        padding: 12px;
+    }
+
+    .revision-topic-status {
+        display: none;
     }
 
     .summary-row {

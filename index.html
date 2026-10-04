@@ -194,6 +194,12 @@
                             <span class="study-option-desc">Your weekly classes, Monday to Sunday.</span>
                         </button>
 
+                        <button type="button" class="study-option clickable" onclick="openRevisionGenerator()">
+                            <span class="study-option-icon">🤖</span>
+                            <span class="study-option-title">AI Revision Generator</span>
+                            <span class="study-option-desc">Generate practice questions from your own topics.</span>
+                        </button>
+
                         <button type="button" class="study-option clickable" onclick="openNotifications()">
                             <span class="study-option-icon">🔔</span>
                             <span class="study-option-title">Reminders</span>
@@ -617,6 +623,291 @@
                     </div>
                 </div>
             `;
+        }
+
+        /* ============================================================
+           AI Revision Generator
+
+           Picks topics the student already has in Skolar and asks the
+           server to write practice questions for them. The AI key lives
+           only on the server; this page never sees it. Model output is
+           rendered with the same safe rich-text renderer the chat uses,
+           so an answer is always text and never markup.
+           ============================================================ */
+
+        const REVISION_COURSES_KEY = "skolar.revisionCourses";
+
+        function loadRevisionCourseIds() {
+            try {
+                const raw = localStorage.getItem(REVISION_COURSES_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function saveRevisionCourseIds(ids) {
+            localStorage.setItem(REVISION_COURSES_KEY, JSON.stringify(ids));
+        }
+
+        function revisionTopicMarkup(courseId) {
+            const topics = loadTopicsFor(courseId);
+
+            if (!topics.length) {
+                return `
+                    <div class="planner-card empty-state">
+                        <h2>No topics in this course yet</h2>
+                        <p>Add topics in Topics &amp; Revision first, then come back to generate questions for them.</p>
+                    </div>
+                `;
+            }
+
+            const preferred = loadRevisionCourseIds();
+            const needsRevision = topics.filter(topic => topic.status === "Needs Revision");
+
+            const isChecked = topic => {
+                if (preferred.indexOf(topic.id) !== -1) {
+                    return true;
+                }
+
+                if (preferred.length) {
+                    return false;
+                }
+
+                return topic.status === "Needs Revision" || needsRevision.length === 0;
+            };
+
+            return topics.map(topic => {
+                const id = topic.id;
+
+                return `
+                    <label class="revision-topic">
+                        <input type="checkbox" id="revision-topic-${escapeHTML(id)}" data-topic-id="${escapeHTML(id)}" value="${escapeHTML(topic.name)}" ${isChecked(topic) ? "checked" : ""}>
+                        <span class="revision-topic-name">${escapeHTML(topic.name)}</span>
+                        <span class="revision-topic-status">${escapeHTML(topic.status || "Not Started")}</span>
+                    </label>
+                `;
+            }).join("");
+        }
+
+        function openRevisionGenerator() {
+            const courses = loadCourses();
+
+            const courseOptionsHTML = courses.length
+                ? courses.map(course => `
+                    <option value="${escapeHTML(course.id)}">${escapeHTML(course.name)}${course.code ? " (" + escapeHTML(course.code) + ")" : ""}</option>
+                `).join("")
+                : `<option value="">No courses added yet</option>`;
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>🤖 AI Revision Generator</h1>
+                        <p>Pick the topics you're struggling with and Skolar writes practice questions for them.</p>
+                    </div>
+
+                    ${courses.length ? `
+                        <div class="assessment-form">
+                            <div class="form-row">
+                                <label class="form-field">
+                                    <span class="form-label">Course</span>
+                                    <select id="revision-course" onchange="updateRevisionTopics()">${courseOptionsHTML}</select>
+                                </label>
+
+                                <label class="form-field">
+                                    <span class="form-label">How many questions?</span>
+                                    <select id="revision-count">
+                                        <option value="3">3 questions</option>
+                                        <option value="5" selected>5 questions</option>
+                                        <option value="8">8 questions</option>
+                                        <option value="10">10 questions</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <h2 class="list-heading">Topics</h2>
+
+                            <div id="revision-topics" class="revision-topics">${revisionTopicMarkup(courses[0].id)}</div>
+
+                            <p id="revision-error" class="form-error"></p>
+
+                            <div class="form-actions">
+                                <button type="button" class="add-course-button" onclick="generateRevision()">Generate questions</button>
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="planner-card empty-state">
+                            <h2>No courses added yet</h2>
+                            <p>The generator works from your own topics, so add a course in My Courses and some topics first.</p>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function updateRevisionTopics() {
+            const select = document.getElementById("revision-course");
+            const container = document.getElementById("revision-topics");
+
+            if (!select || !container) {
+                return;
+            }
+
+            container.innerHTML = revisionTopicMarkup(select.value);
+        }
+
+        function collectRevisionSelection() {
+            const select = document.getElementById("revision-course");
+            const container = document.getElementById("revision-topics");
+
+            if (!select || !container) {
+                return null;
+            }
+
+            const course = getCourseById(select.value);
+
+            const boxes = container.querySelectorAll("input[type=checkbox]:checked");
+            const topics = [];
+            const topicIds = [];
+
+            for (let i = 0; i < boxes.length; i++) {
+                topics.push(boxes[i].value);
+                topicIds.push(boxes[i].getAttribute("data-topic-id"));
+            }
+
+            return {
+                course: course ? course.name : "",
+                courseId: course ? course.id : "",
+                topics: topics,
+                topicIds: topicIds
+            };
+        }
+
+        async function generateRevision() {
+            const selection = collectRevisionSelection();
+            const errorBox = document.getElementById("revision-error");
+
+            const showError = message => {
+                if (errorBox) {
+                    errorBox.className = "form-error visible";
+                    errorBox.textContent = message;
+                }
+            };
+
+            if (!selection) {
+                showError("Please choose a course first.");
+                return;
+            }
+
+            if (!selection.topics.length) {
+                showError("Please select at least one topic to revise.");
+                return;
+            }
+
+            const countSelect = document.getElementById("revision-count");
+            const count = countSelect ? Number(countSelect.value) : 5;
+
+            if (errorBox) {
+                errorBox.className = "form-error";
+                errorBox.textContent = "";
+            }
+
+            try {
+                const response = await fetch("/revision", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        courseName: selection.course,
+                        topics: selection.topics,
+                        count: count
+                    })
+                });
+
+                let data = null;
+
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    data = null;
+                }
+
+                if (!response.ok) {
+                    const reason = data && typeof data.error === "string" ? data.error : null;
+
+                    showError(reason || "Skolar couldn't generate questions just now. Please try again.");
+                    return;
+                }
+
+                const questions = data && Array.isArray(data.questions) ? data.questions : [];
+                const raw = data && typeof data.raw === "string" ? data.raw : "";
+
+                renderRevisionResults(questions, raw, selection);
+            } catch (error) {
+                showError("I couldn't connect to the Skolar server. Please try again.");
+            }
+        }
+
+        function renderRevisionResults(questions, raw, selection) {
+            /* Remember which topics were used, so returning to the form keeps them ticked. */
+            saveRevisionCourseIds(selection.topicIds || []);
+
+            let bodyHTML = "";
+
+            if (questions.length) {
+                bodyHTML = questions.map((item, index) => `
+                    <div class="revision-card">
+                        <h2 class="revision-question">${index + 1}. ${escapeHTML(item.question)}</h2>
+                        ${item.topic ? `<span class="revision-tag">${escapeHTML(item.topic)}</span>` : ""}
+                        <p id="revision-answer-${index}" class="revision-answer"></p>
+                    </div>
+                `).join("");
+            } else if (raw) {
+                bodyHTML = `<div id="revision-raw" class="revision-raw"></div>`;
+            } else {
+                bodyHTML = `
+                    <div class="planner-card empty-state">
+                        <h2>No questions came back</h2>
+                        <p>Try selecting fewer topics, or ask Skolar in the chat instead.</p>
+                    </div>
+                `;
+            }
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openRevisionGenerator()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>🤖 Revision Questions</h1>
+                        <p>${escapeHTML(selection.course || "All topics")} — ${selection.topics.length} topic${selection.topics.length === 1 ? "" : "s"} selected.</p>
+                    </div>
+
+                    <div id="revision-results" class="revision-results">
+                        ${bodyHTML}
+                    </div>
+                </div>
+            `;
+
+            /* Model text is rendered by the chat's safe rich-text renderer,
+               never as markup. */
+            if (questions.length && typeof setRichText === "function") {
+                questions.forEach((item, index) => {
+                    const node = document.getElementById("revision-answer-" + index);
+
+                    if (node) {
+                        setRichText(node, item.answer);
+                    }
+                });
+            } else if (raw && typeof setRichText === "function") {
+                const node = document.getElementById("revision-raw");
+
+                if (node) {
+                    setRichText(node, raw);
+                }
+            }
         }
 
         function topicCardHTML(courseId, topic) {

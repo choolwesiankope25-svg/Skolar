@@ -642,6 +642,117 @@ function buildRetryCorrection(originalMessage, offending, hasSchedule) {
 
 
 /* ============================================================
+   AI provider - the single integration point
+
+   Every AI feature (chat, revision generator) goes through
+   callGroq(), so the provider, the model, the credentials and the
+   failure handling are defined in exactly one place. The API key is
+   read here and never sent to the browser.
+   ============================================================ */
+
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "openai/gpt-oss-20b";
+
+/* Groq's free tier allows 8000 tokens per minute, and every request
+   carries the full system prompt, so a short burst of questions
+   exhausts the window and the provider answers 429. Retrying after
+   the wait the provider itself asked for makes this transparent
+   instead of failing the student's question outright. Three attempts
+   with a 15s ceiling stay inside the 45s client timeout. */
+const RATE_LIMIT_MAX_ATTEMPTS = 3;
+const RATE_LIMIT_MIN_WAIT_MS = 3000;
+const RATE_LIMIT_MAX_WAIT_MS = 15000;
+const RATE_LIMIT_FALLBACK_WAIT_MS = 8000;
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/* "Please try again in 13.9575s." or a Retry-After header -> a bounded wait. */
+function rateLimitWaitMs(payload, headers) {
+    const header = headers && typeof headers.get === "function"
+        ? (headers.get("retry-after") || headers.get("x-ratelimit-reset-requests") || "")
+        : "";
+
+    const fromHeader = Number(header);
+
+    if (Number.isFinite(fromHeader) && fromHeader > 0) {
+        return Math.min(Math.max(fromHeader * 1000, RATE_LIMIT_MIN_WAIT_MS), RATE_LIMIT_MAX_WAIT_MS);
+    }
+
+    const message = payload && payload.error && typeof payload.error.message === "string"
+        ? payload.error.message
+        : "";
+
+    const match = message.match(/try again in\s+([0-9.]+)\s*s/i);
+
+    if (match) {
+        const ms = Math.round(Number(match[1]) * 1000);
+
+        if (Number.isFinite(ms)) {
+            return Math.min(Math.max(ms, RATE_LIMIT_MIN_WAIT_MS), RATE_LIMIT_MAX_WAIT_MS);
+        }
+    }
+
+    return RATE_LIMIT_FALLBACK_WAIT_MS;
+}
+
+async function callGroq(messages, options) {
+    const settings = options || {};
+
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt++) {
+        const body = {
+            model: settings.model || GROQ_MODEL,
+            messages: messages
+        };
+
+        if (settings.responseFormat) {
+            body.response_format = settings.responseFormat;
+        }
+
+        const upstream = await fetch(GROQ_API_URL, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+        });
+
+        const payload = await upstream.json().catch(() => null);
+
+        if (upstream.ok) {
+            return { ok: true, status: upstream.status, payload: payload, rateLimited: false };
+        }
+
+        const rateLimited = upstream.status === 429;
+
+        if (rateLimited && attempt < RATE_LIMIT_MAX_ATTEMPTS) {
+            await sleep(rateLimitWaitMs(payload, upstream.headers));
+            continue;
+        }
+
+        return { ok: false, status: upstream.status, payload: payload, rateLimited: rateLimited };
+    }
+
+    return { ok: false, status: 429, payload: null, rateLimited: true };
+}
+
+const RATE_LIMIT_MESSAGE =
+    "Skolar is answering a lot of questions at once. Wait about 15 seconds, then try again.";
+
+function providerFailure(result) {
+    return {
+        status: result.rateLimited ? 429 : result.status,
+        body: {
+            error: result.rateLimited ? RATE_LIMIT_MESSAGE : "AI request failed.",
+            code: result.rateLimited ? "rate_limited" : "ai_error"
+        }
+    };
+}
+
+
+/* ============================================================
    Route
    ============================================================ */
 
@@ -681,34 +792,14 @@ app.post("/chat", async (req, res) => {
             }
         ];
 
-        const callGroq = async modelMessages => {
-            const upstream = await fetch(
-                "https://api.groq.com/openai/v1/chat/completions",
-                {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        model: "openai/gpt-oss-20b",
-                        messages: modelMessages
-                    })
-                }
-            );
-
-            const payload = await upstream.json();
-
-            return { ok: upstream.ok, status: upstream.status, payload };
-        };
-
         const first = await callGroq(messages);
 
         if (!first.ok) {
             console.error(first.payload);
-            return res.status(first.status).json({
-                error: "AI request failed."
-            });
+
+            const failure = providerFailure(first);
+
+            return res.status(failure.status).json(failure.body);
         }
 
         let answer = first.payload.choices?.[0]?.message?.content || "";
@@ -752,6 +843,131 @@ app.post("/chat", async (req, res) => {
 
         res.status(500).json({
             error: "Something went wrong."
+        });
+    }
+});
+
+/* ============================================================
+   AI Revision Generator
+
+   Deliberately short system prompt: it runs against the same
+   tokens-per-minute window as chat, so it carries only the
+   instructions it needs.
+   ============================================================ */
+
+const REVISION_SYSTEM_PROMPT =
+    "You write exam revision questions for university students. " +
+    "Respond with ONLY a JSON object, no markdown fences and no commentary, in exactly this shape: " +
+    "{\"questions\":[{\"question\":\"...\",\"answer\":\"...\",\"topic\":\"...\"}]}. " +
+    "Questions must test understanding rather than recall of wording, and must be answerable from the topic name alone. " +
+    "Answers must be accurate and concise - two or three sentences at most.";
+
+const REVISION_MAX_TOPICS = 20;
+const REVISION_MAX_COUNT = 10;
+
+/* Tolerant parse: the model is asked for JSON, but a malformed reply
+   must not lose the student's generated questions. */
+function parseRevisionQuestions(content) {
+    const text = typeof content === "string" ? content : "";
+
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+
+    if (start === -1 || end <= start) {
+        return null;
+    }
+
+    let parsed;
+
+    try {
+        parsed = JSON.parse(text.slice(start, end + 1));
+    } catch (error) {
+        return null;
+    }
+
+    const list = parsed && Array.isArray(parsed.questions) ? parsed.questions : [];
+
+    const questions = [];
+
+    for (const item of list) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+
+        const question = cleanString(item.question, 600);
+        const answer = cleanString(item.answer, 1200);
+        const topic = cleanString(item.topic, 120);
+
+        if (question && answer) {
+            questions.push({ question, answer, topic });
+        }
+    }
+
+    return questions.length ? questions : null;
+}
+
+app.post("/revision", async (req, res) => {
+    try {
+        const body = isPlainObject(req.body) ? req.body : {};
+
+        const courseName = cleanString(body.courseName, 120) || "";
+        const rawTopics = Array.isArray(body.topics) ? body.topics.slice(0, REVISION_MAX_TOPICS) : [];
+
+        const topics = [];
+
+        for (const item of rawTopics) {
+            const name = cleanString(item, 120);
+
+            if (name && topics.indexOf(name) === -1) {
+                topics.push(name);
+            }
+        }
+
+        if (!topics.length) {
+            return res.status(400).json({
+                error: "Pick at least one topic to revise.",
+                code: "no_topics"
+            });
+        }
+
+        const requested = Number(body.count);
+        const count = Number.isFinite(requested)
+            ? Math.min(Math.max(Math.round(requested), 1), REVISION_MAX_COUNT)
+            : 5;
+
+        const userPrompt =
+            "Course: " + (courseName || "Not specified") + "\n" +
+            "Topics to revise: " + topics.join(", ") + "\n\n" +
+            "Write " + count + " revision questions spread across those topics, mixing easy and harder ones. " +
+            "Tag each question with the single topic it belongs to.";
+
+        const result = await callGroq([
+            { role: "system", content: REVISION_SYSTEM_PROMPT },
+            { role: "user", content: userPrompt }
+        ], { responseFormat: { type: "json_object" } });
+
+        if (!result.ok) {
+            console.error(result.payload);
+
+            const failure = providerFailure(result);
+
+            return res.status(failure.status).json(failure.body);
+        }
+
+        const content = result.payload?.choices?.[0]?.message?.content || "";
+        const questions = parseRevisionQuestions(content);
+
+        res.json({
+            questions: questions || [],
+            raw: questions ? "" : content
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Something went wrong.",
+            code: "server_error"
         });
     }
 });

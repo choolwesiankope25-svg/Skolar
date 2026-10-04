@@ -1075,13 +1075,19 @@ async function sendMessage() {
 
         if (!response.ok) {
             const reason = data && typeof data.error === "string" ? data.error : null;
+            const code = data && typeof data.code === "string" ? data.code : "";
 
             restoreInputOnFailure();
 
+            /* Rate limiting is the server telling us the provider is busy, not
+               a broken connection, so say what actually happened and how long
+               to wait. The server already retried once on our behalf. */
             showChatError(
-                reason
-                    ? "Skolar couldn't reply just now (" + reason + "). Your conversation is saved — please try again."
-                    : "Skolar couldn't reply just now (error " + response.status + "). Your conversation is saved — please try again.",
+                code === "rate_limited"
+                    ? reason + " Your question is still in the box — nothing was lost."
+                    : reason
+                        ? "Skolar couldn't reply just now (" + reason + "). Your conversation is saved — please try again."
+                        : "Skolar couldn't reply just now (error " + response.status + "). Your conversation is saved — please try again.",
                 thinkingBubble
             );
 
