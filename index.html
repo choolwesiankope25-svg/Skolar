@@ -124,6 +124,7 @@
     </main>
 
     <script src="app.js"></script>
+    <script src="backup.js"></script>
 
     <script>
         function openChat() {
@@ -205,6 +206,12 @@
                             <span class="study-option-title">Reminders</span>
                             <span class="study-option-desc">Assessment deadlines and planned sessions, in one calm list.</span>
                             ${unreadNotifications ? `<span class="notification-badge"><span aria-hidden="true">${unreadNotifications > 99 ? "99+" : unreadNotifications}</span><span class="visually-hidden"> unread ${unreadNotifications === 1 ? "reminder" : "reminders"}</span></span>` : ""}
+                        </button>
+
+                        <button type="button" class="study-option clickable" onclick="openBackup()">
+                            <span class="study-option-icon">💾</span>
+                            <span class="study-option-title">Backup &amp; Restore</span>
+                            <span class="study-option-desc">Download everything Skolar keeps on this device, or restore it from a backup file.</span>
                         </button>
                     </div>
                 </div>
@@ -4246,6 +4253,352 @@
             }
 
             document.body.replaceChildren(page);
+        }
+
+        /* ============================================================
+           Backup & Restore
+
+           The format, the validation and the restore write path live in
+           backup.js (SkolarBackup). This block is only the page: it
+           renders the view, reads the chosen file, shows what would
+           change and asks for confirmation before anything is written.
+           ============================================================ */
+
+        let pendingBackupRestore = null;
+
+        function backupErrorMessage(error) {
+            if (error && typeof error.message === "string" && error.message) {
+                return error.message;
+            }
+
+            return String(error);
+        }
+
+        function backupError(boxId, message) {
+            const box = document.getElementById(boxId);
+
+            if (!box) {
+                return;
+            }
+
+            box.className = message ? "form-error visible" : "form-error";
+            box.textContent = message || "";
+        }
+
+        function backupStatus(boxId, message) {
+            const box = document.getElementById(boxId);
+
+            if (!box) {
+                return;
+            }
+
+            box.className = message ? "form-success visible" : "form-success";
+            box.textContent = message || "";
+        }
+
+        /* Reads storage through the shared module, so export and the test
+           suite always agree on which keys are backed up. */
+        function buildBackupExport() {
+            return SkolarBackup.createBackup(localStorage, new Date());
+        }
+
+        function openBackup() {
+            pendingBackupRestore = null;
+
+            let keyRows = "";
+            let storageNotes = "";
+            let exportError = "";
+
+            try {
+                const backup = buildBackupExport();
+
+                keyRows = SkolarBackup.BACKUP_KEYS.map(entry => {
+                    const count = SkolarBackup.countValue(backup.data[entry.key]);
+
+                    return `
+                        <li class="backup-key-row">
+                            <span class="backup-key-label">${escapeHTML(entry.label)}</span>
+                            <span class="backup-key-count">${count} ${count === 1 ? "entry" : "entries"}</span>
+                        </li>
+                    `;
+                }).join("");
+
+                if (Array.isArray(backup.notes) && backup.notes.length) {
+                    storageNotes = `
+                        <ul class="backup-warnings">
+                            ${backup.notes.map(note => `<li>${escapeHTML(String(note))}</li>`).join("")}
+                        </ul>
+                    `;
+                }
+            } catch (error) {
+                exportError = "The data stored in this browser could not be read for export: " + backupErrorMessage(error);
+            }
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>💾 Backup &amp; Restore</h1>
+                        <p>Everything Skolar keeps in this browser, saved as one file you can download now and restore later.</p>
+                    </div>
+
+                    <div class="assessment-form backup-panel">
+                        <span class="small-label">EXPORT</span>
+                        <h2 class="backup-panel-title">Download a backup</h2>
+                        <p class="backup-panel-text">Your backup is a versioned JSON file with the data listed below. It is created on this device and never uploaded anywhere.</p>
+
+                        <ul class="backup-keys">
+                            ${keyRows}
+                        </ul>
+
+                        ${storageNotes}
+
+                        <p id="backup-export-error" class="form-error${exportError ? " visible" : ""}">${exportError ? escapeHTML(exportError) : ""}</p>
+                        <p id="backup-export-status" class="form-success"></p>
+
+                        <div class="form-actions">
+                            <button type="button" class="add-course-button" onclick="exportBackup()">⬇ Download backup file</button>
+                        </div>
+                    </div>
+
+                    <div class="assessment-form backup-panel">
+                        <span class="small-label">RESTORE</span>
+                        <h2 class="backup-panel-title">Restore from a file</h2>
+                        <p class="backup-panel-text">Choose a <strong>.json</strong> file exported from Skolar. The file is checked first, then you review exactly what will change and confirm — nothing is overwritten before that.</p>
+
+                        <label class="form-field">
+                            <span class="form-label">Backup file</span>
+                            <input type="file" id="backup-file-input" accept=".json,application/json" onchange="previewBackupRestore(this)">
+                        </label>
+
+                        <p id="backup-import-error" class="form-error"></p>
+                        <p id="backup-import-status" class="form-success"></p>
+
+                        <div id="backup-preview"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /* Builds the payload and hands it to the shared download helper. */
+        function exportBackup() {
+            backupError("backup-export-error", "");
+            backupStatus("backup-export-status", "");
+
+            try {
+                const backup = buildBackupExport();
+                const text = SkolarBackup.serializeBackup(backup);
+                const name = SkolarBackup.exportFileName(new Date());
+
+                SkolarBackup.downloadText(text, name, {
+                    document: document,
+                    URL: URL,
+                    Blob: Blob
+                });
+
+                backupStatus("backup-export-status", "Saved " + name + " — keep it somewhere safe.");
+                return true;
+            } catch (error) {
+                backupError("backup-export-error", "The backup could not be downloaded: " + backupErrorMessage(error));
+                return false;
+            }
+        }
+
+        function readBackupFile(file) {
+            if (file && typeof file.text === "function") {
+                return Promise.resolve(file.text());
+            }
+
+            return new Promise((resolve, reject) => {
+                if (typeof FileReader === "undefined") {
+                    reject(new Error("This browser cannot read the chosen file."));
+                    return;
+                }
+
+                const reader = new FileReader();
+
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error || new Error("The file could not be read."));
+
+                reader.readAsText(file);
+            });
+        }
+
+        /* Reads, validates and previews the chosen file. Nothing is written
+           here — the result only fills the preview block. */
+        function previewBackupRestore(input) {
+            pendingBackupRestore = null;
+            backupError("backup-import-error", "");
+            backupStatus("backup-import-status", "");
+
+            const previewBox = document.getElementById("backup-preview");
+
+            if (previewBox) {
+                previewBox.innerHTML = "";
+            }
+
+            const file = input && input.files && input.files.length ? input.files[0] : null;
+
+            if (!file) {
+                return Promise.resolve(false);
+            }
+
+            if (typeof file.size === "number" && file.size > SkolarBackup.MAX_BACKUP_BYTES) {
+                backupError(
+                    "backup-import-error",
+                    "That file is too large to be a Skolar backup (limit " +
+                    Math.round(SkolarBackup.MAX_BACKUP_BYTES / (1024 * 1024)) + " MB)."
+                );
+                return Promise.resolve(false);
+            }
+
+            return readBackupFile(file)
+                .then(text => {
+                    const result = SkolarBackup.validateBackupText(text);
+
+                    if (!result.ok) {
+                        backupError("backup-import-error", result.errors.join(" "));
+                        return false;
+                    }
+
+                    const preview = SkolarBackup.describePreview(result.backup, localStorage);
+
+                    pendingBackupRestore = {
+                        backup: result.backup,
+                        rows: preview.rows,
+                        warnings: result.warnings,
+                        fileName: typeof file.name === "string" && file.name ? file.name : "backup file"
+                    };
+
+                    const target = document.getElementById("backup-preview");
+
+                    if (target) {
+                        target.innerHTML = backupPreviewHTML(pendingBackupRestore);
+                    }
+
+                    return true;
+                })
+                .catch(error => {
+                    backupError("backup-import-error", "The file could not be read: " + backupErrorMessage(error));
+                    return false;
+                });
+        }
+
+        /* The preview screen: current value, incoming value and the action
+           for every key the file touches, plus any warnings. */
+        function backupPreviewHTML(state) {
+            const actionLabels = {
+                replace: "Will replace",
+                create: "Will be created",
+                kept: "Kept as it is",
+                unchanged: "Unchanged"
+            };
+
+            const rows = state.rows.map(row => {
+                const current = row.currentCount === null ? "unreadable" : String(row.currentCount);
+                const incoming = row.incomingCount === null ? "—" : String(row.incomingCount);
+                const action = actionLabels[row.action] || row.action;
+
+                return `
+                    <li class="backup-key-row">
+                        <span class="backup-key-label">${escapeHTML(row.label)}</span>
+                        <span class="backup-key-change">${current} → ${incoming}</span>
+                        <span class="backup-badge ${escapeHTML(row.action)}">${escapeHTML(action)}</span>
+                    </li>
+                `;
+            }).join("");
+
+            const warnings = state.warnings && state.warnings.length
+                ? `<ul class="backup-warnings">${state.warnings.map(warning => `<li>${escapeHTML(String(warning))}</li>`).join("")}</ul>`
+                : "";
+
+            return `
+                <div class="backup-preview-block">
+                    <h3 class="backup-preview-title">Preview — ${escapeHTML(state.fileName)}</h3>
+                    <p class="backup-panel-text">Your data right now, then what the file contains. Only these keys are ever written.</p>
+
+                    <ul class="backup-keys">${rows}</ul>
+
+                    ${warnings}
+
+                    <div class="form-actions">
+                        <button type="button" class="add-course-button" onclick="confirmBackupRestore()">Replace my data with this backup</button>
+                        <button type="button" class="back-button inline" onclick="cancelBackupRestore()">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        /* The only place that writes a restore: preview first, confirm second,
+           and if the write fails the shared module puts the old data back. */
+        function confirmBackupRestore() {
+            if (!pendingBackupRestore) {
+                backupError("backup-import-error", "Choose a backup file first.");
+                return false;
+            }
+
+            const fileName = pendingBackupRestore.fileName;
+
+            if (!confirm("Replace all Skolar data in this browser with \"" + fileName + "\"? This cannot be undone.")) {
+                return false;
+            }
+
+            const result = SkolarBackup.restoreBackup(localStorage, pendingBackupRestore.backup);
+
+            pendingBackupRestore = null;
+
+            const previewBox = document.getElementById("backup-preview");
+
+            if (previewBox) {
+                previewBox.innerHTML = "";
+            }
+
+            const input = document.getElementById("backup-file-input");
+
+            if (input) {
+                input.value = "";
+            }
+
+            if (!result.ok) {
+                backupError("backup-import-error", result.errors.join(" "));
+                return false;
+            }
+
+            const restoredCount = result.restored.length;
+            const remaining = SkolarBackup.BACKUP_KEYS.length - restoredCount;
+
+            backupStatus(
+                "backup-import-status",
+                "Restored " + restoredCount + (restoredCount === 1 ? " section" : " sections") +
+                " from \"" + fileName + "\". " +
+                (remaining > 0
+                    ? remaining + (remaining === 1 ? " section was" : " sections were") + " not in the file and " + (remaining === 1 ? "was" : "were") + " left as it was."
+                    : "Everything in the file is now in place.")
+            );
+
+            return true;
+        }
+
+        function cancelBackupRestore() {
+            pendingBackupRestore = null;
+
+            backupError("backup-import-error", "");
+            backupStatus("backup-import-status", "");
+
+            const previewBox = document.getElementById("backup-preview");
+
+            if (previewBox) {
+                previewBox.innerHTML = "";
+            }
+
+            const input = document.getElementById("backup-file-input");
+
+            if (input) {
+                input.value = "";
+            }
+
+            return true;
         }
 </script>
 
