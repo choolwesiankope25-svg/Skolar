@@ -1,9 +1,9 @@
 /* ============================================================
-   Skolar — Backup & Restore core
+   Skolar: Backup & Restore (client-side, localStorage only)
 
-   One module owns the backup format, its validation and the
-   restore write path, so the page markup in index.html and the
-   tests in scripts/backup.test.mjs exercise exactly the same
+   One module owns the backup format, its validation and both the
+   import and restore write paths, so the page markup in index.html
+   and the tests in scripts/*.test.mjs exercise exactly the same
    code.
 
    Rules this module follows:
@@ -13,6 +13,13 @@
        that is not in that list.
      - A restore either completes for every key in the file, or
        the data that was there before is written back.
+     - The Private Journal key is part of the known key list so a
+       restore can carry it forward, but older backups that do not
+       contain the journal simply keep the journal entries that
+       already exist in the browser. When the journal key is present,
+       every entry is validated (id, title, body and both timestamps)
+       before anything is written, so a malformed journal is refused
+       instead of being restored into an unreadable state.
      - Nothing here touches the DOM except downloadText(), which
        takes its environment as a parameter so tests can inject
        their own.
@@ -44,7 +51,7 @@
     /* The actual keys this project uses:
          index.html: skolar.courses, skolar.topics, skolar.assessments,
                      skolar.sessions, skolar.timetable, skolar.notifications,
-                     skolar.revisionCourses
+                     skolar.revisionCourses, skolar.privateJournal
          app.js:     skolar.chatHistory
        `type` is the JSON shape the app stores there and validates against. */
     const BACKUP_KEYS = [
@@ -55,7 +62,8 @@
         { key: "skolar.timetable", label: "Timetable", type: "array" },
         { key: "skolar.revisionCourses", label: "Revision courses", type: "array" },
         { key: "skolar.notifications", label: "Reminders", type: "array" },
-        { key: "skolar.chatHistory", label: "Chat history", type: "array" }
+        { key: "skolar.chatHistory", label: "Chat history", type: "array" },
+        { key: "skolar.privateJournal", label: "Private journal", type: "array" }
     ];
 
     function isPlainObject(value) {
@@ -84,6 +92,58 @@
 
     function keyEntry(key) {
         return BACKUP_KEYS.find(entry => entry.key === key) || null;
+    }
+
+    /* The journal is stored as an array of entries. A restore must never
+       write a journal that the journal module cannot read back, so each
+       entry is checked against the shape journal.js writes. A backup that
+       does not contain the journal key at all is left alone, which is what
+       keeps older backups from erasing existing entries. */
+    function journalEntryProblems(value) {
+        const problems = [];
+        const titleMax = 160;
+        const bodyMax = 20000;
+
+        if (!Array.isArray(value)) {
+            return problems;
+        }
+
+        value.forEach((item, index) => {
+            const label = "Journal entry " + (index + 1);
+
+            if (!isPlainObject(item)) {
+                problems.push(label + " is not an object.");
+                return;
+            }
+
+            if (typeof item.id !== "string" || !item.id) {
+                problems.push(label + " has no usable id.");
+            }
+
+            if (typeof item.title !== "string") {
+                problems.push(label + " has no text title.");
+            } else if (item.title.length > titleMax) {
+                problems.push(label + " has a title longer than " + titleMax + " characters.");
+            }
+
+            if (typeof item.body !== "string") {
+                problems.push(label + " has no text body.");
+            } else if (item.body.length > bodyMax) {
+                problems.push(label + " has a body longer than " + bodyMax + " characters.");
+            }
+
+            if (typeof item.createdAt !== "string" || !item.createdAt ||
+                !Number.isFinite(parseInt(item.createdAt, 10))) {
+                problems.push(label + " has no usable creation date.");
+            }
+
+            if (typeof item.updatedAt !== "string" || !item.updatedAt ||
+                !Number.isFinite(parseInt(item.updatedAt, 10))) {
+                problems.push(label + " has no usable update date.");
+            }
+        });
+
+        return problems;
     }
 
     function countValue(value) {
@@ -272,6 +332,8 @@
                     "\"" + entry.key + "\" must be " + describeType(entry.type) +
                     " in a Skolar backup, but this file has something else."
                 );
+            } else if (entry.key === "skolar.privateJournal") {
+                errors.push(...journalEntryProblems(backup.data[field]));
             }
         }
 
@@ -335,6 +397,11 @@
 
             if (!matchesType(backup.data[field], entry.type)) {
                 errors.push("\"" + entry.key + "\" must be " + describeType(entry.type) + ".");
+                continue;
+            }
+
+            if (entry.key === "skolar.privateJournal") {
+                errors.push(...journalEntryProblems(backup.data[field]));
             }
         }
 
@@ -439,22 +506,25 @@
 
         const snapshot = Object.create(null);
 
-        try {
-            for (const entry of BACKUP_KEYS) {
+        /* Read one key at a time so a blocked read can name the key that
+           failed instead of blaming the whole browser. */
+        for (const entry of BACKUP_KEYS) {
+            try {
                 snapshot[entry.key] = storage.getItem(entry.key);
+            } catch (error) {
+                return {
+                    ok: false,
+                    stage: "read",
+                    restored: [],
+                    errors: [
+                        "The data currently stored in this browser for \"" + entry.key +
+                        "\" could not be read (" + errorMessage(error) +
+                        "), so nothing was changed."
+                    ],
+                    rolledBack: true,
+                    rollbackErrors: []
+                };
             }
-        } catch (error) {
-            return {
-                ok: false,
-                stage: "read",
-                restored: [],
-                errors: [
-                    "The data currently stored in this browser could not be read (" +
-                    errorMessage(error) + "), so nothing was changed."
-                ],
-                rolledBack: true,
-                rollbackErrors: []
-            };
         }
 
         const written = [];

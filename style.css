@@ -2193,6 +2193,147 @@ body {
     margin-bottom: 20px;
 }
 
+/* ===== Private Journal ===== */
+.journal-panel-title {
+    font-size: 20px;
+    line-height: 1.3;
+    color: #202522;
+}
+
+.journal-panel-text {
+    color: #657067;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.journal-word-count {
+    color: #667269;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.journal-entry-list {
+    list-style: none;
+    display: grid;
+    gap: 14px;
+}
+
+.journal-entry-row {
+    display: block;
+}
+
+.journal-entry-card {
+    border: 1px solid #dfe4df;
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 22px 24px;
+}
+
+.journal-entry-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.journal-entry-actions {
+    display: inline-flex;
+    gap: 8px;
+}
+
+.journal-entry-title {
+    display: block;
+    font-size: 18px;
+    font-weight: bold;
+    color: #202522;
+    line-height: 1.3;
+}
+
+.journal-entry-body {
+    color: #354239;
+    font-size: 15px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.journal-entry-meta,
+.journal-entry-delete {
+    font-size: 13px;
+    color: #667269;
+}
+
+.journal-entry-delete {
+    border: 1px solid #c05f4d;
+    background: #ffffff;
+    color: #6f352a;
+    padding: 6px 11px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.2s ease;
+}
+
+.journal-entry-delete:hover {
+    background: #f6e6e2;
+}
+
+.journal-entry-edit {
+    border: 1px solid #cfd8cf;
+    background: #ffffff;
+    color: #2f5d3f;
+    padding: 6px 11px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.2s ease;
+}
+
+.journal-entry-edit:hover {
+    background: #eef4ee;
+}
+
+.journal-empty {
+    border: 1px dashed #d5dbd5;
+    border-radius: 18px;
+    background: #f7f8f6;
+    color: #667269;
+    padding: 20px 24px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.journal-notice {
+    border-left: 4px solid #4d7c5f;
+    background: #f7faf3;
+    color: #2f5d3f;
+    border-radius: 12px;
+    padding: 14px 18px;
+    max-width: min(720px, 90%);
+    margin: 18px auto 45px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+@media (max-width: 750px) {
+    .journal-entry-head {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .journal-entry-title {
+        font-size: 17px;
+    }
+
+    .journal-entry-body {
+        font-size: 14px;
+    }
+}
+
 .backup-panel-title {
     font-size: 20px;
     line-height: 1.3;

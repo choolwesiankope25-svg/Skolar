@@ -68,7 +68,7 @@
                 </span>
             </button>
 
-            <button class="feature-card">
+            <button class="feature-card" onclick="openJournal()">
                 <span class="feature-icon">📔</span>
                 <span class="feature-title">Journal</span>
                 <span class="feature-description">
@@ -125,6 +125,7 @@
 
     <script src="app.js"></script>
     <script src="backup.js"></script>
+    <script src="journal.js"></script>
 
     <script>
         function openChat() {
@@ -199,6 +200,12 @@
                             <span class="study-option-icon">🤖</span>
                             <span class="study-option-title">AI Revision Generator</span>
                             <span class="study-option-desc">Generate practice questions from your own topics.</span>
+                        </button>
+
+                        <button type="button" class="study-option clickable" onclick="openJournal()">
+                            <span class="study-option-icon">📔</span>
+                            <span class="study-option-title">Private Journal</span>
+                            <span class="study-option-desc">Your private thoughts, saved only on this device.</span>
                         </button>
 
                         <button type="button" class="study-option clickable" onclick="openNotifications()">
@@ -4302,6 +4309,14 @@
             return SkolarBackup.createBackup(localStorage, new Date());
         }
 
+        /* Confirmation helper shared between Backup & Restore and the Journal
+           delete path. The same sentence style keeps the two features consistent. */
+        function confirmJournalDelete(entry) {
+            return confirm(
+                "Delete " + entry.title + "? This private thought will be removed from this device and cannot be recovered."
+            );
+        }
+
         function openBackup() {
             pendingBackupRestore = null;
 
@@ -4597,6 +4612,372 @@
             if (input) {
                 input.value = "";
             }
+
+            return true;
+        }
+
+        /* ============================================================
+           Private Journal
+
+           The schema, the store and the safe rendering helpers live in
+           journal.js (SkolarJournal). This block is only the page: it
+           renders the view, drives the form, and hands each entry to the
+           shared safe-rendering helpers.
+
+           Privacy guarantee on the page: nothing here ever puts journal
+           content into chat, AI requests, chat history, error messages, or
+           logs. Entries are read from and written to localStorage only.
+           ============================================================ */
+
+        let openJournalMode = null;
+
+        function journalError(boxId, message) {
+            const box = document.getElementById(boxId);
+
+            if (!box) {
+                return;
+            }
+
+            box.className = message ? "form-error visible" : "form-error";
+            box.textContent = message || "";
+        }
+
+        function journalStatus(boxId, message) {
+            const box = document.getElementById(boxId);
+
+            if (!box) {
+                return;
+            }
+
+            box.className = message ? "form-success visible" : "form-success";
+            box.textContent = message || "";
+        }
+
+        /* Entries store their timestamps as milliseconds written as strings.
+           An ISO string from an older build still renders, and an unreadable
+           value is left blank rather than printing "Invalid Date". */
+        function journalDate(value) {
+            const text = typeof value === "string" ? value.trim() : "";
+
+            if (/^\d+$/.test(text)) {
+                const millis = parseInt(text, 10);
+
+                if (Number.isFinite(millis) && millis > 0) {
+                    return new Date(millis).toLocaleString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit"
+                    });
+                }
+            }
+
+            const parsed = Date.parse(text);
+
+            return Number.isFinite(parsed) && parsed > 0
+                ? new Date(parsed).toLocaleString()
+                : "";
+        }
+
+        function journalEntriesNewestFirst() {
+            return SkolarJournal.loadEntries(localStorage).slice().sort((a, b) => (
+                (parseInt(b.updatedAt, 10) || 0) - (parseInt(a.updatedAt, 10) || 0)
+            ));
+        }
+
+        function openJournal() {
+            openJournalMode = null;
+
+            document.body.innerHTML = `
+                <div class="study-page">
+                    <button class="back-button" onclick="openStudy()">← Back</button>
+
+                    <div class="study-heading">
+                        <h1>📔 Private Journal</h1>
+                        <p>Your private thoughts — a private space for notes only you can see.</p>
+                    </div>
+
+                    <div class="assessment-form journal-panel">
+                        <span class="small-label">CREATE</span>
+                        <h2 class="journal-panel-title">New entry</h2>
+                        <p class="journal-panel-text">Write a title and whatever you want to remember. It is saved in this browser only, on this device.</p>
+
+                        <label class="form-field">
+                            <span class="form-label">Title</span>
+                            <input type="text" id="journal-title" maxlength="${SkolarJournal.JOURNAL_TITLE_MAX}"
+                                   placeholder="A short title for this thought">
+                        </label>
+
+                        <label class="form-field">
+                            <span class="form-label">Your thought</span>
+                            <textarea id="journal-body" maxlength="${SkolarJournal.JOURNAL_BODY_MAX}" rows="6"
+                                      placeholder="What is on your mind?"></textarea>
+                        </label>
+
+                        <p id="journal-word-count" class="journal-word-count"></p>
+                        <p id="journal-error" class="form-error"></p>
+
+                        <div class="form-actions">
+                            <button type="button" class="add-course-button" onclick="saveJournalEntry()">Save entry</button>
+                            <button type="button" class="back-button inline" onclick="cancelJournalEntry()">Cancel</button>
+                        </div>
+                    </div>
+
+                    <div class="assessment-form journal-panel">
+                        <span class="small-label">ENTRIES</span>
+                        <h2 class="journal-panel-title">Keep</h2>
+                        <p class="journal-panel-text">Your entries live in this browser's local storage. Nothing is uploaded, synced, or shared.</p>
+
+                        <div id="journal-entry-list"></div>
+                        <p id="journal-status" class="form-success"></p>
+                    </div>
+                </div>
+                <div class="journal-notice">
+                    <p>Your journal is stored only on this device and is never shared or sent to the AI. Clearing this browser's data will remove it.</p>
+                </div>
+            `;
+
+            bindJournalForm();
+            bindJournalList();
+        }
+
+        function bindJournalForm() {
+            const bodyInput = document.getElementById("journal-body");
+
+            if (bodyInput) {
+                bodyInput.addEventListener("input", event => updateWordCount(event.target.value));
+            }
+
+            updateWordCount("");
+        }
+
+        function journalEntryListHTML(entries) {
+            if (!entries.length) {
+                return `<div class="journal-empty"><p>No entries yet. Write your first thought above.</p></div>`;
+            }
+
+            const rows = entries.map(entry => {
+                const created = journalDate(entry.createdAt);
+                const updated = journalDate(entry.updatedAt);
+                const edited = updated && updated !== created;
+
+                return `
+                    <li class="journal-entry-row">
+                        <div class="journal-entry-card">
+                            <div class="journal-entry-head">
+                                <span class="journal-entry-meta">
+                                    ${created ? `Created ${escapeHTML(created)}` : ""}
+                                    ${created && edited ? " · " : ""}
+                                    ${edited ? `Edited ${escapeHTML(updated)}` : ""}
+                                </span>
+                                <span class="journal-entry-actions">
+                                    <button type="button" class="journal-entry-edit"
+                                            data-journal-action="edit"
+                                            data-journal-id="${escapeHTML(entry.id)}">Edit</button>
+                                    <button type="button" class="journal-entry-delete"
+                                            data-journal-action="delete"
+                                            data-journal-id="${escapeHTML(entry.id)}">Delete</button>
+                                </span>
+                            </div>
+                            ${SkolarJournal.entryTitleHTML(entry.title)}
+                            ${SkolarJournal.entryBodyHTML(entry.body)}
+                        </div>
+                    </li>
+                `;
+            }).join("");
+
+            return `<ol class="journal-entry-list">${rows}</ol>`;
+        }
+
+        function bindJournalList() {
+            const list = document.getElementById("journal-entry-list");
+
+            if (!list) {
+                return;
+            }
+
+            list.innerHTML = journalEntryListHTML(journalEntriesNewestFirst());
+
+            /* One delegated handler, so ids restored from a backup are never
+               interpolated into inline JavaScript. */
+            list.onclick = event => {
+                const button = event.target.closest("[data-journal-action]");
+
+                if (!button) {
+                    return;
+                }
+
+                const id = button.getAttribute("data-journal-id");
+
+                if (button.getAttribute("data-journal-action") === "edit") {
+                    editJournalEntry(id);
+                } else {
+                    deleteJournalEntry(id);
+                }
+            };
+        }
+
+        function readJournalTitle() {
+            const input = document.getElementById("journal-title");
+            return input ? input.value.trim() : "";
+        }
+
+        function readJournalBody() {
+            const input = document.getElementById("journal-body");
+            return input ? input.value : "";
+        }
+
+        function wordCount(text) {
+            if (!text) {
+                return 0;
+            }
+
+            return text.trim().split(/\s+/).filter(Boolean).length;
+        }
+
+        function updateWordCount(text) {
+            const box = document.getElementById("journal-word-count");
+
+            if (!box) {
+                return;
+            }
+
+            const words = wordCount(text);
+
+            box.textContent = words === 0
+                ? "No words yet."
+                : `About ${words} word${words === 1 ? "" : "s"}.`;
+        }
+
+        function resetJournalForm() {
+            openJournalMode = null;
+
+            const titleInput = document.getElementById("journal-title");
+            const bodyInput = document.getElementById("journal-body");
+
+            if (titleInput) {
+                titleInput.value = "";
+            }
+
+            if (bodyInput) {
+                bodyInput.value = "";
+            }
+
+            updateWordCount("");
+        }
+
+        function saveJournalEntry() {
+            const title = readJournalTitle();
+            const body = readJournalBody();
+
+            journalError("journal-error", "");
+            journalStatus("journal-status", "");
+
+            if (!title) {
+                journalError("journal-error", "Please write a title for this entry.");
+                return false;
+            }
+
+            if (title.length > SkolarJournal.JOURNAL_TITLE_MAX) {
+                journalError("journal-error", "A title may be at most " + SkolarJournal.JOURNAL_TITLE_MAX + " characters.");
+                return false;
+            }
+
+            if (body.length > SkolarJournal.JOURNAL_BODY_MAX) {
+                journalError("journal-error", "An entry may be at most " + SkolarJournal.JOURNAL_BODY_MAX + " characters.");
+                return false;
+            }
+
+            const editing = openJournalMode;
+            const now = Date.now();
+            const id = editing ? editing.id : "journal-" + now.toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+            const createdAt = editing ? String(editing.createdAt) : String(now);
+
+            const result = SkolarJournal.save(localStorage, {
+                id: id,
+                title: title,
+                body: body,
+                createdAt: createdAt,
+                updatedAt: String(now)
+            });
+
+            if (!result.ok) {
+                journalError("journal-error", result.problems[0]);
+                return false;
+            }
+
+            resetJournalForm();
+            bindJournalList();
+            journalStatus("journal-status", editing ? "Saved changes." : "Saved.");
+
+            return true;
+        }
+
+        function cancelJournalEntry() {
+            journalError("journal-error", "");
+            journalStatus("journal-status", "");
+            resetJournalForm();
+
+            return true;
+        }
+
+        function editJournalEntry(id) {
+            const found = SkolarJournal.loadEntries(localStorage).find(entry => entry.id === id);
+
+            if (!found) {
+                journalError("journal-error", "That entry no longer exists on this device.");
+                bindJournalList();
+                return false;
+            }
+
+            openJournalMode = found;
+            journalError("journal-error", "");
+            journalStatus("journal-status", "Editing “" + found.title + "”. Save to keep your changes, or cancel to leave it untouched.");
+
+            const titleInput = document.getElementById("journal-title");
+            const bodyInput = document.getElementById("journal-body");
+
+            if (titleInput) {
+                titleInput.value = found.title;
+                titleInput.focus();
+            }
+
+            if (bodyInput) {
+                bodyInput.value = found.body;
+            }
+
+            updateWordCount(found.body);
+
+            return true;
+        }
+
+        function deleteJournalEntry(id) {
+            const found = SkolarJournal.loadEntries(localStorage).find(entry => entry.id === id);
+
+            if (!found) {
+                journalError("journal-error", "That entry no longer exists on this device.");
+                bindJournalList();
+                return false;
+            }
+
+            if (!confirmJournalDelete(found)) {
+                return false;
+            }
+
+            const result = SkolarJournal.deleteEntry(localStorage, id);
+
+            if (!result.ok || !result.removed) {
+                journalError("journal-error", "The entry could not be removed. Your existing entries are still on this device.");
+                return false;
+            }
+
+            if (openJournalMode && openJournalMode.id === id) {
+                resetJournalForm();
+            }
+
+            bindJournalList();
+            journalStatus("journal-status", "Deleted.");
 
             return true;
         }

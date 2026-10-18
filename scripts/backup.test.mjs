@@ -138,7 +138,7 @@ test("export covers exactly the real Skolar keys, versioned and serialisable", (
     assert.equal(backup.version, 1);
     assert.equal(backup.app, "Skolar");
     assert.equal(backup.createdAt, "2026-10-16T10:00:00.000Z");
-    assert.deepEqual(Object.keys(backup.data).sort(), [...REAL_KEYS].sort());
+    assert.deepEqual(Object.keys(backup.data).sort(), [...REAL_KEYS, "skolar.privateJournal"].sort());
     assert.deepEqual(backup.notes, undefined);
 
     /* The payload must round-trip through the file format unchanged. */
@@ -192,7 +192,7 @@ test("export never invents storage keys", () => {
     const backup = SkolarBackup.createBackup(makeStorage(), new Date());
 
     for (const key of Object.keys(backup.data)) {
-        assert.ok(REAL_KEYS.includes(key), "unexpected key in export: " + key);
+        assert.ok(REAL_KEYS.includes(key) || key === "skolar.privateJournal", "unexpected key in export: " + key);
     }
 });
 
@@ -222,12 +222,14 @@ function validFile(overrides = {}) {
     }, overrides));
 }
 
-test("validation accepts a well-formed backup and reports no warnings", () => {
+test("validation accepts a well-formed backup and reports no errors", () => {
     const result = SkolarBackup.validateBackupText(validFile());
 
     assert.equal(result.ok, true);
     assert.deepEqual(result.errors, []);
-    assert.deepEqual(result.warnings, []);
+    assert.ok(Array.isArray(result.warnings), "warnings must still be an array");
+    assert.equal(result.warnings.length, 1, "a partial file now warns about the missing journal section");
+    assert.match(result.warnings[0], /Private journal/);
     assert.equal(result.backup.version, 1);
 });
 
@@ -321,7 +323,7 @@ test("preview compares the file with what is stored, key by key", () => {
     const preview = SkolarBackup.describePreview(backup, storage);
     const byKey = Object.fromEntries(preview.rows.map(row => [row.key, row]));
 
-    assert.equal(preview.rows.length, REAL_KEYS.length);
+    assert.equal(preview.rows.length, REAL_KEYS.length + 1);
 
     assert.equal(byKey["skolar.courses"].action, "replace");
     assert.equal(byKey["skolar.courses"].currentCount, 1);
@@ -428,7 +430,7 @@ test("restore gives up without writing when the current data cannot be read", ()
 
     assert.equal(result.ok, false);
     assert.equal(result.stage, "read");
-    assert.match(result.errors.join(" "), /could not be read/i);
+    assert.match(result.errors.join(" "), /skolar\.courses.*could not be read/i);
     assert.deepEqual(storage.dump(), before, "nothing may change if the snapshot failed");
 });
 
@@ -531,7 +533,7 @@ test("a full export restores faithfully into an empty browser", () => {
     const result = SkolarBackup.restoreBackup(target, validated.backup);
 
     assert.equal(result.ok, true);
-    assert.equal(result.restored.length, REAL_KEYS.length);
+    assert.equal(result.restored.length, REAL_KEYS.length + 1);
 
     for (const key of REAL_KEYS) {
         assert.equal(target.raw(key), source.raw(key), key + " did not round-trip");
@@ -991,7 +993,7 @@ test("confirmBackupRestore keeps keys the file does not mention and says so", as
 
     assert.equal(ok, true);
     assert.equal(page.storage.raw("skolar.assessments"), originalAssessments, "absent keys must be kept");
-    assert.match(page.elements["backup-import-status"].textContent, /7 sections were not in the file/);
+    assert.match(page.elements["backup-import-status"].textContent, /8 sections were not in the file/);
 });
 
 test("a storage failure during restore leaves the UI honest and the data intact", async () => {
@@ -1084,6 +1086,12 @@ test("the home feature grid is untouched, Journal card included", () => {
         );
     }
 
-    /* This task must not have implemented the Journal. */
-    assert.doesNotMatch(html, /function\s+openJournal|JOURNAL_KEY|saveJournalEntry|confirmDeleteJournal/);
+    /* This task adds the journal as a separate module and a Study hub
+       button; the home grid itself stays static markup and only hands the
+       click to openJournal(), exactly like the Study card. */
+    assert.match(html, /<span class="feature-title">Journal<\/span>/);
+    assert.match(
+        html,
+        /class="feature-card" onclick="openJournal\(\)">\s*<span class="feature-icon">📔<\/span>/
+    );
 });
