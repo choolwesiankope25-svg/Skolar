@@ -1,13 +1,104 @@
 import express from "express";
 import dotenv from "dotenv";
 import dns from "dns"
+import rateLimit from "./rate-limit.js";
+import serverConfig from "./server-config.js";
+import httpSafety from "./http-safety.js";
 
 dotenv.config();
 dns.setDefaultResultOrder("ipv4first");
 
 const app = express();
 
-const PORT = 3000;
+/* The version banner tells a client exactly which framework version to
+   target, so it is turned off for everyone. */
+app.disable("x-powered-by");
+
+/* ============================================================
+   Hosting configuration
+
+   PORT comes from the hosting platform (Render, Railway, Koyeb
+   and Fly all route traffic to a port they choose) and falls back
+   to 3000 for local development. HOST defaults to 0.0.0.0 because
+   container hosts require an all-interfaces bind; localhost keeps
+   working with that same default.
+
+   Every value read here is a number or a hostname - no secret passes
+   through this block. The parsing rules live in server-config.js.
+   ============================================================ */
+
+const portConfig = serverConfig.resolvePort(process.env);
+const hostConfig = serverConfig.resolveHost(process.env);
+const proxyConfig = serverConfig.resolveTrustProxy(process.env);
+const limitConfig = serverConfig.resolveRateLimits(process.env);
+const debugConfig = serverConfig.resolveDebugMode(process.env);
+
+const PORT = portConfig.port;
+const HOST = hostConfig.host;
+
+/* X-Forwarded-For is ignored unless the operator declares the real number
+   of proxy hops in front of the app. Trusting more hops than actually exist
+   would let a client forge its own address and dodge the rate limits. */
+if (proxyConfig.hops > 0) {
+    app.set("trust proxy", proxyConfig.hops);
+}
+
+/* ============================================================
+   AI rate limits
+
+   One allowance per client address, per AI endpoint. These run above
+   body parsing, so an over-limit request never reaches express.json()
+   or callGroq(). Counters are in-memory: they reset on every restart
+   and are not shared between instances, so N servers multiply the real
+   ceiling. rate-limit.js documents the full list of limitations.
+   ============================================================ */
+
+const chatLimiter = rateLimit.createRateLimiter({
+    max: limitConfig.chatMax,
+    windowMs: limitConfig.windowMs,
+    trustProxy: proxyConfig.hops > 0
+});
+
+const revisionLimiter = rateLimit.createRateLimiter({
+    max: limitConfig.revisionMax,
+    windowMs: limitConfig.windowMs,
+    trustProxy: proxyConfig.hops > 0
+});
+
+/* Mounted right before express.static, so only the five published files
+   are ever served. Everything else in the deployment folder - server
+   source, package.json, the lockfile, tests, scratch folders, .env and
+   .git - answers 404. It is an allowlist, so a file added later is
+   private unless it is deliberately added to PUBLIC_FILES. */
+const staticGuard = httpSafety.createStaticGuard();
+
+/* Only sends a stack trace to a client when NODE_ENV explicitly asks for
+   development behaviour; on a host it logs once and answers safely. */
+const errorHandler = httpSafety.createErrorHandler({
+    isProduction: !debugConfig.debug,
+    log: message => console.error(message)
+});
+
+function reportServerConfig() {
+    for (const item of portConfig.warnings.concat(hostConfig.warnings, proxyConfig.warnings, limitConfig.warnings)) {
+        console.log("[config] " + item);
+    }
+
+    console.log(
+        "[mode] NODE_ENV " + debugConfig.name +
+        (debugConfig.debug
+            ? " - development: error responses include a stack trace."
+            : " - production: error responses carry no stack trace.")
+    );
+
+    console.log("[files] public: / (index.html) and " + httpSafety.PUBLIC_FILES.join(", ") + "; everything else is 404.");
+
+    console.log(
+        "[limits] per client: " + limitConfig.chatMax + " chat and " + limitConfig.revisionMax +
+        " revision requests per " + Math.round(limitConfig.windowMs / 1000) + "s " +
+        "(in-memory counters: reset on restart, not shared between instances)."
+    );
+}
 
 /* ============================================================
    Request limits - the browser is never trusted blindly.
@@ -770,31 +861,33 @@ function reportProviderConfig() {
 }
 
 /* Logs the provider's own status and error type/code so the real cause is
-   visible. Deliberately never logs the key or any request/response body. */
-function logProviderFailure(result) {
+   visible. Deliberately never logs the key, the message list, the student's
+   question, or the upstream response body - only these three fields. */
+function logProviderFailure(result, endpoint) {
     const upstream = result.payload && result.payload.error ? result.payload.error : {};
     const type = typeof upstream.type === "string" ? upstream.type : "";
     const code = typeof upstream.code === "string" ? upstream.code : "";
+    const where = endpoint ? " on " + endpoint : "";
 
     if (result.status === 401 || code === "invalid_api_key") {
-        console.log("[ai] Groq rejected the API key (HTTP 401). Check that GROQ_API_KEY in your .env file is correct, complete, and not expired.");
+        console.log("[ai] Groq rejected the API key" + where + " (HTTP 401). Check that GROQ_API_KEY in your .env file is correct, complete, and not expired.");
         return;
     }
 
     if (result.status === 404 || code === "model_not_found") {
-        console.log("[ai] Groq does not recognise the model '" + GROQ_MODEL + "' (HTTP 404). Check the model name for this account.");
+        console.log("[ai] Groq does not recognise the model '" + GROQ_MODEL + "'" + where + " (HTTP 404). Check the model name for this account.");
         return;
     }
 
     console.log(
-        "[ai] Groq request failed. status=" + result.status +
+        "[ai] Groq request failed" + where + ". status=" + result.status +
         (type ? " type=" + type : "") +
         (code ? " code=" + code : "")
     );
 }
 
-function providerFailure(result) {
-    logProviderFailure(result);
+function providerFailure(result, endpoint) {
+    logProviderFailure(result, endpoint);
 
     return {
         status: result.rateLimited ? 429 : result.status,
@@ -810,8 +903,17 @@ function providerFailure(result) {
    Route
    ============================================================ */
 
+/* Rate limits sit above body parsing on purpose: an abusive client is
+   answered before its JSON is parsed and before any Groq request is made. */
+app.use("/chat", chatLimiter);
+app.use("/revision", revisionLimiter);
+
 app.use(express.json());
-app.use(express.static("."));
+
+/* The guard must sit above the static middleware, and below the routes'
+   own middleware, so it blocks files without touching the API. */
+app.use(staticGuard);
+app.use(express.static(".", { dotfiles: "deny" }));
 
 app.post("/chat", async (req, res) => {
     try {
@@ -849,9 +951,9 @@ app.post("/chat", async (req, res) => {
         const first = await callGroq(messages);
 
         if (!first.ok) {
-            console.error(first.payload);
-
-            const failure = providerFailure(first);
+            /* The payload is never logged - providerFailure() records the
+               status and error code only. */
+            const failure = providerFailure(first, "/chat");
 
             return res.status(failure.status).json(failure.body);
         }
@@ -1001,9 +1103,9 @@ app.post("/revision", async (req, res) => {
         ], { responseFormat: { type: "json_object" } });
 
         if (!result.ok) {
-            console.error(result.payload);
-
-            const failure = providerFailure(result);
+            /* The payload is never logged - providerFailure() records the
+               status and error code only. */
+            const failure = providerFailure(result, "/revision");
 
             return res.status(failure.status).json(failure.body);
         }
@@ -1026,7 +1128,12 @@ app.post("/revision", async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Skolar is running at http://localhost:${PORT}`);
+/* Last in line: anything that escaped a route handler lands here and gets
+   a JSON answer with no internal detail. */
+app.use(errorHandler);
+
+app.listen(PORT, HOST, () => {
+    console.log(`Skolar is listening on ${HOST}:${PORT} (locally: http://localhost:${PORT})`);
+    reportServerConfig();
     reportProviderConfig();
 });

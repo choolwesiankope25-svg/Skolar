@@ -3,6 +3,9 @@
     "start": "node server.mjs",
     "test": "node --test scripts/*.test.mjs"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "dotenv": "^18.0.5",
     "express": "^5.2.1"
